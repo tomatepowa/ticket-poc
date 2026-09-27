@@ -1,0 +1,14 @@
+services:
+  tickets-poc:
+    build: .
+    container_name: portail-tickets-poc
+    ports:
+      - "3000:3000"
+    environment:
+      # EasyVista simule tant que l'API n'est pas accessible
+      SOURCE: simulation
+      # Connexion de developpement sans mot de passe : poste ou reseau de test UNIQUEMENT
+      AUTH_MODE: dev
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped

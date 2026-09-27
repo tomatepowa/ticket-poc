@@ -1,0 +1,6 @@
+node_modules/
+dist/
+*.log
+
+# Base de l'EV simulé : recréée par `npm run reset-demo`
+data/

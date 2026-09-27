@@ -1,0 +1,21 @@
+{
+  "name": "ev-ticket-poc",
+  "version": "0.1.0",
+  "description": "POC portail de gestion de tickets IT sous EasyVista",
+  "main": "server.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node server.js",
+    "build": "vite build",
+    "reset-demo": "node -e \"const ev = require('./sources/clients/simule'); ev.reinitialiserDemo(); ev.fermer(); console.log('Donnees de demo de l EV simule recreees.')\""
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.11.1",
+    "express": "^4.19.2"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^6.0.9",
+    "vite": "^8.3.1",
+    "vue": "^3.5.43"
+  }
+}
