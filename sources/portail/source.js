@@ -182,7 +182,8 @@ function creerSource(client) {
     return tickets
       .filter((t) => !etablissements.length || etablissements.includes(t.etablissement?.id))
       .filter((t) => !filtres.groupe || t.groupe?.id === Number(filtres.groupe))
-      .filter((t) => !filtres.statut || t.statut === filtres.statut)
+      // "ACTIFS" : tout sauf resolu et cloture ; sinon un statut precis.
+      .filter((t) => !filtres.statut || (filtres.statut === "ACTIFS" ? !TERMINES.includes(t.statut) : t.statut === filtres.statut))
       .filter((t) => !q || normaliser(`${t.numero} ${t.titre} ${t.demandeur?.nom} ${t.intervenant?.nom || ""}`).includes(q));
   }
 
@@ -577,6 +578,15 @@ function creerSource(client) {
       }
 
       const tickets = await this.listerTickets(u, filtres);
+
+      // Compteurs des boutons de statut : meme vue et memes filtres, SAUF le statut
+      // (sinon tous les autres boutons afficheraient 0).
+      const sansStatut = await this.listerTickets(u, { ...filtres, statut: "" });
+      const parFiltreStatut = { "": sansStatut.length, ACTIFS: 0 };
+      for (const t of sansStatut) {
+        parFiltreStatut[t.statut] = (parFiltreStatut[t.statut] || 0) + 1;
+        if (!TERMINES.includes(t.statut)) parFiltreStatut.ACTIFS++;
+      }
       const ouverts = tickets.filter((t) => !TERMINES.includes(t.statut));
       const parStatut = {};
       tickets.forEach((t) => (parStatut[t.statut] = (parStatut[t.statut] || 0) + 1));
@@ -586,6 +596,7 @@ function creerSource(client) {
         en_retard: tickets.filter((t) => t.en_retard).length,
         attendent_mon_action: tickets.filter((t) => t.attend_mon_action).length,
         parEtablissement: [...parEtablissement.values()],
+        parFiltreStatut,
         parGroupe: (await groupesIntervention()).map((g) => ({
           groupe: g,
           n: ouverts.filter((t) => t.groupe?.id === g.id).length,

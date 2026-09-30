@@ -15,6 +15,7 @@ const emit = defineEmits(["filtrer", "deconnecter"]);
 
 const STATUTS = [
   { code: "", label: "Tous" },
+  { code: "ACTIFS", label: "Actifs" }, // tout sauf résolu et clôturé
   { code: "OUVERT", label: "À traiter" },
   { code: "EN_COURS", label: "En cours" },
   { code: "EN_ATTENTE", label: "En attente" },
@@ -136,13 +137,36 @@ function changerTheme() {
       </div>
 
       <div class="rail-group">
+        <span class="rail-label" id="l-statut">Statut</span>
+        <div class="chip-set" role="group" aria-labelledby="l-statut">
+          <button
+            v-for="s in STATUTS"
+            :key="s.code"
+            class="chip"
+            :aria-pressed="s.code === filtres.statut"
+            @click="emit('filtrer', { statut: s.code })"
+          >
+            {{ s.label }}<span v-if="stats?.parFiltreStatut" class="chip-compte">({{ stats.parFiltreStatut[s.code] || 0 }})</span>
+          </button>
+        </div>
+      </div>
+
+      <div v-if="moi.profil !== 'VALIDEUR'" class="rail-group">
+        <label for="f-groupe">Groupe</label>
+        <select id="f-groupe" :value="filtres.groupe" @change="emit('filtrer', { groupe: $event.target.value })">
+          <option value="">Tous</option>
+          <option v-for="g in referentiels.groupes" :key="g.id" :value="String(g.id)">{{ g.nom }}</option>
+        </select>
+      </div>
+
+      <div class="rail-group">
         <div class="rail-label-ligne">
           <span class="rail-label" id="l-etab">Établissements</span>
           <button v-if="coches.size" class="lien-rail" type="button" @click="emit('filtrer', { etablissement: '' })">
             Tout décocher ({{ coches.size }})
           </button>
         </div>
-        <p class="etab-legende">Tickets {{ filtres.statut ? "" : "en cours " }}: à moi / {{ libelleGroupes }}</p>
+        <p class="etab-legende">Tickets {{ !filtres.statut || filtres.statut === "ACTIFS" ? "en cours " : "" }}: à moi / {{ libelleGroupes }}</p>
         <div class="etab-tri" role="group" aria-label="Trier les établissements">
           <button
             v-for="t in tris"
@@ -172,28 +196,6 @@ function changerTheme() {
         </div>
       </div>
 
-      <div v-if="moi.profil !== 'VALIDEUR'" class="rail-group">
-        <label for="f-groupe">Groupe</label>
-        <select id="f-groupe" :value="filtres.groupe" @change="emit('filtrer', { groupe: $event.target.value })">
-          <option value="">Tous</option>
-          <option v-for="g in referentiels.groupes" :key="g.id" :value="String(g.id)">{{ g.nom }}</option>
-        </select>
-      </div>
-
-      <div class="rail-group">
-        <span class="rail-label" id="l-statut">Statut</span>
-        <div class="chip-set" role="group" aria-labelledby="l-statut">
-          <button
-            v-for="s in STATUTS"
-            :key="s.code"
-            class="chip"
-            :aria-pressed="s.code === filtres.statut"
-            @click="emit('filtrer', { statut: s.code })"
-          >
-            {{ s.label }}
-          </button>
-        </div>
-      </div>
     </nav>
 
     <div class="rail-foot">

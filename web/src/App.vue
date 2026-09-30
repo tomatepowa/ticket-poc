@@ -69,7 +69,8 @@ async function entrer(utilisateur, vuesDisponibles) {
   referentiels.value = await api("/referentiels");
   moi.value = utilisateur;
   vues.value = vuesDisponibles;
-  Object.assign(filtres, { vue: vuesDisponibles[0].code, q: "", etablissement: "", groupe: "", statut: "" });
+  // Par défaut : tickets actifs (tout sauf résolu / clôturé), les clos restent à un clic.
+  Object.assign(filtres, { vue: vuesDisponibles[0].code, q: "", etablissement: "", groupe: "", statut: "ACTIFS" });
   etat.value = "portail";
   await rafraichir();
 
