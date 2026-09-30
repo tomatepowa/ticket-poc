@@ -74,6 +74,14 @@ api.post(
   })
 );
 
+// Meme action sur plusieurs tickets : { action, numeros: [...], commentaire }
+api.post(
+  "/tickets/lot",
+  envelopper(async (req, res) => {
+    res.json(await source.executerLot(req.user, req.body || {}));
+  })
+);
+
 api.post(
   "/tickets/:id/actions",
   envelopper(async (req, res) => {

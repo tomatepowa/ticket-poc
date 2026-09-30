@@ -183,7 +183,7 @@ function creerSource(client) {
       .filter((t) => !etablissements.length || etablissements.includes(t.etablissement?.id))
       .filter((t) => !filtres.groupe || t.groupe?.id === Number(filtres.groupe))
       .filter((t) => !filtres.statut || t.statut === filtres.statut)
-      .filter((t) => !q || normaliser(`${t.numero} ${t.titre} ${t.demandeur?.nom}`).includes(q));
+      .filter((t) => !q || normaliser(`${t.numero} ${t.titre} ${t.demandeur?.nom} ${t.intervenant?.nom || ""}`).includes(q));
   }
 
   // Tickets du cache visibles par l'utilisateur, analyses.
@@ -198,6 +198,32 @@ function creerSource(client) {
     return candidats.map(({ req, actions }) => M.analyser(req, actions)).filter((ctx) => M.peutVoir(u, ctx));
   }
 
+  // Membres actifs d'un groupe EV : [{ id, nom }] (GET /groups/{id}/employees).
+  async function membresDuGroupe(groupeId) {
+    if (!groupeId || !client.getGroupEmployees) return [];
+    return memo(`membres:${groupeId}`, CINQ_MIN, async () =>
+      actifs((await client.getGroupEmployees(groupeId)).records, cfg.champsFin.employe)
+        .map((e) => {
+          const [nom, prenom = ""] = String(e.LAST_NAME).split(/,\s*/);
+          return { id: Number(e.EMPLOYEE_ID), nom: prenom ? `${prenom} ${nom}` : nom };
+        })
+        .sort((a, b) => a.nom.localeCompare(b.nom, "fr"))
+    );
+  }
+
+  // Collegues a qui reaffecter : membres du groupe, sauf moi et l'intervenant actuel.
+  async function collegues(u, ctx, groupeId) {
+    const actuel = ctx.principale ? M.idAuteur(ctx.principale) : null;
+    return (await membresDuGroupe(groupeId)).filter((m) => m.id !== u.id && m.id !== actuel);
+  }
+
+  // Trace dans l'historique EV : modifier l'intervenant d'une action n'en laisse pas.
+  async function tracer(u, rfc, groupeId, texte) {
+    await client.createAction(rfc, {
+      action: { action_type_name: cfg.typeCommentaire, group_id: groupeId || u.groupes[0]?.id, done_by_id: u.id, comment: texte },
+    });
+  }
+
   async function ticketComplet(u, { ctx, origine, lu_le, erreur_ev }) {
     let actions = [];
     let formulaire = null;
@@ -208,6 +234,8 @@ function creerSource(client) {
           ...M.versActionPublique(a),
           // Formulaire EV a remplir pour terminer cette etape
           questionnaire: a.op.type === "TERMINER" ? await questionnaireAction(ctx, a.op.action_id) : null,
+          // Collegues proposes pour une reaffectation
+          ...(a.parametre === "membre" ? { membres: await collegues(u, ctx, a.op.group_id) } : {}),
         }))
       );
       if (client.getQuestionResults) {
@@ -218,6 +246,8 @@ function creerSource(client) {
         }
       }
     }
+    // Pas de reaffectation proposee quand personne d'autre n'est dans le groupe.
+    actions = actions.filter((a) => a.parametre !== "membre" || a.membres.length);
     return {
       ...M.versTicket(ctx, u, await titresCatalogue()),
       formulaire,
@@ -419,7 +449,7 @@ function creerSource(client) {
       return ticketComplet(u, await contexteDirect(rfc));
     },
 
-    async executerAction(u, rfc, { action, commentaire, groupe_id, reponses } = {}) {
+    async executerAction(u, rfc, { action, commentaire, groupe_id, membre_id, reponses } = {}) {
       const { ctx, origine } = await contexteVisible(u, rfc);
       if (origine !== "ev") throw new ErreurSource(503, "EasyVista est injoignable : action impossible pour le moment");
       const a = M.actionsPossibles(u, ctx).find((x) => x.code === action);
@@ -453,6 +483,24 @@ function creerSource(client) {
           // Le commentaire est obligatoire cote EV pour une reprise.
           await client.updateRequest(rfc, { restarted: { comment: message || "Reprise du traitement", done_by_id: u.id } });
           break;
+        case "REAFFECTER": {
+          const membre = (await collegues(u, ctx, op.group_id)).find((m) => m.id === Number(membre_id));
+          if (!membre) throw new ErreurSource(400, "Choisissez le collègue à qui réaffecter le ticket");
+          await client.updateAction(op.action_id, { done_by_id: membre.id });
+          await tracer(u, rfc, op.group_id, `Réaffecté à ${membre.nom} par ${u.nom_complet}.${message ? `\n${message}` : ""}`);
+          break;
+        }
+        case "DESAFFECTER": {
+          const ancien = ctx.intervenant?.nom;
+          await client.updateAction(op.action_id, { done_by_id: null });
+          await tracer(
+            u,
+            rfc,
+            ctx.groupe?.id,
+            `Remis dans le groupe ${ctx.groupe?.nom || ""} (non affecté) par ${u.nom_complet}${ancien ? `, était affecté à ${ancien}` : ""}.${message ? `\n${message}` : ""}`
+          );
+          break;
+        }
         case "TRANSFERER": {
           const g = (await groupesIntervention()).find((x) => x.id === Number(groupe_id));
           if (!g) throw new ErreurSource(400, "Choisissez le groupe vers lequel transférer");
@@ -489,6 +537,26 @@ function creerSource(client) {
     },
 
     // Stats de la liste affichee : memes vue et filtres que la liste.
+    // Meme action sur plusieurs tickets (ex. remettre dans leur groupe tous les
+    // tickets d'un intervenant absent). Chaque ticket passe par executerAction :
+    // memes droits, meme trace. Resultat ticket par ticket.
+    async executerLot(u, { action, numeros, commentaire } = {}) {
+      const permises = ["DESAFFECTER"];
+      if (!permises.includes(action)) throw new ErreurSource(400, "Action non disponible en lot");
+      if (!Array.isArray(numeros) || !numeros.length) throw new ErreurSource(400, "Aucun ticket sélectionné");
+      if (numeros.length > 200) throw new ErreurSource(400, "200 tickets au maximum par lot");
+      const resultats = [];
+      for (const numero of numeros) {
+        try {
+          await this.executerAction(u, String(numero), { action, commentaire });
+          resultats.push({ numero, ok: true });
+        } catch (err) {
+          resultats.push({ numero, ok: false, erreur: err.message });
+        }
+      }
+      return { reussis: resultats.filter((r) => r.ok).length, resultats };
+    },
+
     async stats(u, filtres = {}) {
       const titres = await titresCatalogue();
       const mesGroupes = new Set(u.groupes.map((g) => g.id));

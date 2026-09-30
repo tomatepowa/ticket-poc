@@ -188,30 +188,54 @@ function actionsPossibles(u, ctx) {
   const res = [];
   if (ctx.statut === "CLOTURE") return res;
 
+  // Reaffecter / remettre dans le groupe : aussi pour un ticket en attente
+  // (ceux qui restent coinces quand un intervenant s'absente).
+  const reaffectations = (action) => {
+    const out = [{ code: "REAFFECTER", label: "Réaffecter à un collègue", parametre: "membre", secondaire: true, op: { type: "REAFFECTER", action_id: action.ACTION_ID, group_id: idGroupe(action) } }];
+    if (idAuteur(action)) {
+      out.push({ code: "DESAFFECTER", label: "Remettre dans le groupe (non affecté)", secondaire: true, op: { type: "DESAFFECTER", action_id: action.ACTION_ID } });
+    }
+    return out;
+  };
+
   if (ctx.suspendu) {
     if (intervenant && (p ? r.dansGroupe(p) : r.superviseur)) {
-      res.push({ code: "REPRENDRE", label: "Reprendre le traitement", op: { type: "REPRENDRE" } });
+      // Attendu de l'intervenant du ticket (ou de tous s'il n'est affecte a personne).
+      const autrui = Boolean(p && idAuteur(p) && !r.assigne(p));
+      res.push({ code: "REPRENDRE", label: "Reprendre le traitement", secondaire: autrui, op: { type: "REPRENDRE" } });
+      if (p && ctx.tc?.nature === "TRAITEMENT") res.push(...reaffectations(p));
     }
   } else if (p) {
     const tc = ctx.tc;
     const id = p.ACTION_ID;
     if (tc.nature === "TRAITEMENT" && intervenant && r.dansGroupe(p)) {
-      if (!r.assigne(p)) {
-        res.push({ code: "PRENDRE", label: idAuteur(p) ? "M'affecter le ticket" : "Prendre en charge", op: { type: "AFFECTER", action_id: id } });
+      // Seul ce qu'on attend de MOI est une action principale : prendre un ticket
+      // non affecte, ou traiter un ticket qui m'est affecte. Le reste (ticket d'un
+      // collegue, reaffectation, transfert) est possible mais "secondaire", pour ne
+      // pas remplir la vue "Attendent mon action".
+      const aMoi = r.assigne(p);
+      const affecte = Boolean(idAuteur(p));
+      const autrui = affecte && !aMoi;
+      if (!aMoi) {
+        res.push({ code: "PRENDRE", label: affecte ? "M'affecter le ticket" : "Prendre en charge", secondaire: autrui, op: { type: "AFFECTER", action_id: id } });
       }
-      if (idAuteur(p)) {
-        res.push({ code: "TERMINER", label: tc.terminer, commentaire: true, op: { type: "TERMINER", action_id: id } });
-        res.push({ code: "SUSPENDRE", label: "Mettre en attente", commentaire: true, op: { type: "SUSPENDRE" } });
+      if (affecte) {
+        res.push({ code: "TERMINER", label: tc.terminer, commentaire: true, secondaire: autrui, op: { type: "TERMINER", action_id: id } });
+        res.push({ code: "SUSPENDRE", label: "Mettre en attente", commentaire: true, secondaire: autrui, op: { type: "SUSPENDRE" } });
       }
-      res.push({ code: "TRANSFERER", label: "Transférer", commentaire: true, parametre: "groupe", op: { type: "TRANSFERER", action_id: id } });
+      res.push(...reaffectations(p));
+      res.push({ code: "TRANSFERER", label: "Transférer", commentaire: true, parametre: "groupe", secondaire: true, op: { type: "TRANSFERER", action_id: id } });
     }
     if (tc.nature === "VALIDATION" && (r.assigne(p) || r.superviseur)) {
       res.push({ code: "VALIDER", label: "Valider la demande", op: { type: "TERMINER", action_id: id, choice: "1" } });
       res.push({ code: "REFUSER", label: "Refuser", commentaire: true, op: { type: "TERMINER", action_id: id, choice: "0" } });
     }
     if (tc.nature === "CONFIRMATION" && intervenant && r.dansGroupe(p)) {
-      res.push({ code: "CLOTURER", label: "Clôturer (résolution confirmée)", op: { type: "TERMINER", action_id: id, choice: "1" } });
-      res.push({ code: "ROUVRIR", label: "Rouvrir (pas résolu)", commentaire: true, op: { type: "TERMINER", action_id: id, choice: "0" } });
+      // Attendu de celui qui a resolu le ticket (dernier traitement termine).
+      const resolu = [...ctx.actions].reverse().find((a) => a.END_DATE_UT && etapeWorkflow(a)?.nature === "TRAITEMENT");
+      const autrui = !(resolu && idAuteur(resolu) === u.id);
+      res.push({ code: "CLOTURER", label: "Clôturer (résolution confirmée)", secondaire: autrui, op: { type: "TERMINER", action_id: id, choice: "1" } });
+      res.push({ code: "ROUVRIR", label: "Rouvrir (pas résolu)", commentaire: true, secondaire: autrui, op: { type: "TERMINER", action_id: id, choice: "0" } });
     }
   }
 

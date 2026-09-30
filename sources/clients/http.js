@@ -89,6 +89,11 @@ module.exports = {
     // EV 2023.2+. A VERIFIER : forme exacte de la reponse (records de groupes).
     return enListe(await appel("GET", `/employees/${encodeURIComponent(id)}/groups`));
   },
+  // GET /groups/{group_id}/employees (EV 2023.2+) : membres d'un groupe.
+  // A VERIFIER : la reponse donne-t-elle les employes complets ou seulement leurs liens (HREF) ?
+  async getGroupEmployees(groupId) {
+    return enListe(await appel("GET", `/groups/${encodeURIComponent(groupId)}/employees`, { query: { max_rows: 1000 } }));
+  },
   async getGroups(params = {}) {
     return enListe(await appel("GET", "/groups", { query: { max_rows: 1000, ...params } }));
   },

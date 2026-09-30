@@ -188,6 +188,24 @@ async function actualiserDetail() {
   }
 }
 
+// Remettre plusieurs tickets dans leur groupe (ex. intervenant absent).
+async function desaffecterLot(numeros) {
+  try {
+    const { reussis, resultats } = await api("/tickets/lot", {
+      method: "POST",
+      body: JSON.stringify({ action: "DESAFFECTER", numeros }),
+    });
+    const echecs = resultats.filter((r) => !r.ok);
+    toast(
+      `${reussis} ticket${reussis > 1 ? "s" : ""} remis dans leur groupe.` +
+        (echecs.length ? ` ${echecs.length} non modifié(s) : ${echecs.map((e) => `${e.numero} (${e.erreur})`).join(", ")}` : "")
+    );
+  } catch (err) {
+    toast(err.message);
+  }
+  await rafraichir().catch(() => {});
+}
+
 function onPopstate() {
   if (!moi.value) return;
   const id = ticketDansUrl();
@@ -231,7 +249,12 @@ function onKeydown(e) {
       <BandeauSynchro :profil="moi.profil" @nouvelles-donnees="onNouvellesDonnees" />
 
       <StatsTickets v-if="stats" :stats="stats" :profil="moi.profil" />
-      <TableTickets :tickets="tickets" @ouvrir="ouvrirDepuisListe" />
+      <TableTickets
+        :tickets="tickets"
+        :selectionnable="moi.profil !== 'VALIDEUR'"
+        @ouvrir="ouvrirDepuisListe"
+        @desaffecter="desaffecterLot"
+      />
     </main>
   </div>
 

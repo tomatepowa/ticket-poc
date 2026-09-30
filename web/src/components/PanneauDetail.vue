@@ -22,9 +22,13 @@ const erreur = ref("");
 const enCours = ref(false);
 const champCommentaire = ref(null);
 const champGroupe = ref(null);
+const membreId = ref("");
+const champMembre = ref(null);
 
 const t = computed(() => props.ticket);
 const transfert = computed(() => t.value.actions.some((a) => a.parametre === "groupe"));
+// Réaffectation : collègues du groupe proposés par le serveur.
+const reaffectation = computed(() => t.value.actions.find((a) => a.parametre === "membre") || null);
 const autresGroupes = computed(() => props.groupes.filter((g) => g.id !== t.value.groupe?.id));
 // La première action non secondaire est mise en avant.
 const iPrincipale = computed(() => t.value.actions.findIndex((a) => !a.secondaire));
@@ -72,6 +76,12 @@ async function executer(action) {
     champCommentaire.value.focus();
     return;
   }
+  const membre_id = action.parametre === "membre" ? Number(membreId.value) : undefined;
+  if (action.parametre === "membre" && !membre_id) {
+    erreur.value = "Choisissez le collègue à qui réaffecter le ticket.";
+    champMembre.value.focus();
+    return;
+  }
   const groupe_id = action.parametre === "groupe" ? Number(groupeId.value) : undefined;
   if (action.parametre === "groupe" && !groupe_id) {
     erreur.value = "Choisissez le groupe vers lequel transférer.";
@@ -86,6 +96,7 @@ async function executer(action) {
         action: action.code,
         commentaire: texte,
         groupe_id,
+        membre_id,
         ...(action.questionnaire ? { reponses: reponsesVisibles(action.questionnaire, reponses.value) } : {}),
       }),
     });
@@ -171,6 +182,11 @@ async function copierLien() {
           rows="2"
           placeholder="Commentaire (obligatoire pour les actions marquées *)"
         ></textarea>
+        <select v-if="reaffectation" ref="champMembre" v-model="membreId" aria-label="Collègue à qui réaffecter">
+          <option value="">Réaffecter à… (choisir un collègue)</option>
+          <option v-for="m in reaffectation.membres" :key="m.id" :value="m.id">{{ m.nom }}</option>
+          <option v-if="!reaffectation.membres.length" disabled>Aucun autre membre dans ce groupe</option>
+        </select>
         <select v-if="transfert" ref="champGroupe" v-model="groupeId" aria-label="Groupe cible du transfert">
           <option value="">Transférer vers… (choisir un groupe)</option>
           <option v-for="g in autresGroupes" :key="g.id" :value="g.id">{{ g.nom }}</option>

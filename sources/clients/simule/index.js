@@ -540,6 +540,12 @@ module.exports = {
   async getEmployeeGroups(id) {
     return liste(D.GROUPS.filter((g) => g.MEMBERS.includes(Number(id))).map(formatGroupe));
   },
+  // GET /groups/{group_id}/employees (EV 2023.2+)
+  async getGroupEmployees(groupId) {
+    const g = groupe(groupId);
+    if (!g) throw new ErreurSource(404, "Group not found");
+    return liste(g.MEMBERS.map((id) => formatEmploye(employe(id))), { max_rows: 1000 });
+  },
   async getGroups(params) {
     return liste(D.GROUPS.map(formatGroupe), { max_rows: 1000, ...params });
   },
