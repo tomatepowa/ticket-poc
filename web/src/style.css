@@ -993,3 +993,49 @@ table.tickets tbody tr.ligne-moi:hover { background: var(--hover); }
 }
 .etab-tri-btn:hover { color: var(--rail-ink); background: var(--rail-field); }
 .etab-tri-btn[aria-pressed="true"] { color: var(--rail-ink); border-color: var(--rail-soft); background: var(--rail-field); }
+
+/* ---------- Sélection multiple dans la liste ---------- */
+.barre-liste { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin: -6px 0 8px; }
+.barre-liste .legende-affectation { margin: 0 0 0 auto; }
+.barre-selection {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+  font-size: 13px;
+}
+table.tickets .col-selection { width: 34px; padding-left: 12px; padding-right: 0; }
+table.tickets .col-selection input { width: 16px; height: 16px; accent-color: var(--accent); cursor: pointer; }
+/* Noms de groupe longs : tronqués dans la liste (nom complet au survol) */
+.two-lines .badge-equipe { max-width: 170px; overflow: hidden; text-overflow: ellipsis; vertical-align: bottom; }
+/* Liste plus compacte (écrans ~1366 px) : la table tient sans défilement horizontal */
+table.tickets .pill { white-space: normal; max-width: 140px; }
+.two-lines .badge-equipe { max-width: 150px; }
+.titre-cell { max-width: 220px; }
+.two-lines .sub { max-width: 150px; overflow: hidden; text-overflow: ellipsis; }
+table.tickets .num { font-size: 12px; }
+
+/* ---------- Tri par en-tête de colonne ---------- */
+table.tickets thead .tri {
+  border: none;
+  background: none;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  text-transform: inherit;
+  letter-spacing: inherit;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+table.tickets thead .tri:hover { color: var(--ink); }
+table.tickets thead th[aria-sort="ascending"],
+table.tickets thead th[aria-sort="descending"] { color: var(--ink); }
+table.tickets thead .fleche { font-size: 9px; color: var(--accent); min-width: 8px; }
+table.tickets thead .tri-sep { margin: 0 4px; }
+table.tickets td.num .sub { font-family: var(--font-ui); }
