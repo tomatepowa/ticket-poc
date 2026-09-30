@@ -16,6 +16,11 @@ const sansEcheance = (t) => t.statut === "RESOLU" || t.statut === "CLOTURE" || !
 </script>
 
 <template>
+  <p class="legende-affectation" aria-hidden="true">
+    <span class="affecte affecte-aucun">Non affecté</span>
+    <span class="affecte affecte-moi">Moi</span>
+    <span class="affecte affecte-tiers">Affecté à un autre</span>
+  </p>
   <section class="table-wrap">
     <table class="tickets">
       <thead>
@@ -34,7 +39,7 @@ const sansEcheance = (t) => t.statut === "RESOLU" || t.statut === "CLOTURE" || !
           v-for="t in tickets"
           :key="t.id"
           tabindex="0"
-          :class="{ 'needs-action': t.attend_mon_action }"
+          :class="{ 'needs-action': t.attend_mon_action, 'ligne-moi': t.affectation === 'MOI' }"
           @click="onClic($event, t)"
           @keydown.enter="emit('ouvrir', t.id)"
         >
@@ -55,7 +60,10 @@ const sansEcheance = (t) => t.statut === "RESOLU" || t.statut === "CLOTURE" || !
           <td class="two-lines">
             <span v-if="t.groupe" class="badge-equipe">{{ t.groupe.nom }}</span>
             <span v-else class="muted">—</span>
-            <span class="sub">{{ t.intervenant ? t.intervenant.nom : t.groupe ? "Non affecté" : "" }}</span>
+            <!-- Affectation de l'étape en cours : à moi / à un autre / personne -->
+            <span v-if="t.affectation === 'MOI'" class="affecte affecte-moi">Moi</span>
+            <span v-else-if="t.affectation === 'TIERS'" class="affecte affecte-tiers">{{ t.intervenant?.nom }}</span>
+            <span v-else-if="t.affectation === 'AUCUN'" class="affecte affecte-aucun">Non affecté</span>
           </td>
           <td>
             <span class="pill" :class="`statut-${t.statut}`">{{ t.etape.label }}</span>

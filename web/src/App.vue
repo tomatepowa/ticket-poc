@@ -96,7 +96,8 @@ async function rafraichir() {
   Object.entries(filtres).forEach(([k, v]) => v && params.set(k, v));
   const [t, s] = await Promise.all([
     api(`/tickets?${params}`),
-    api(`/stats?vue=${encodeURIComponent(filtres.vue)}`),
+    // Mêmes paramètres : les indicateurs suivent toujours les filtres.
+    api(`/stats?${params}`),
   ]);
   if (n !== derniereRequete) return;
   tickets.value = t;
@@ -211,6 +212,7 @@ function onKeydown(e) {
       :referentiels="referentiels"
       :filtres="filtres"
       :config="config"
+      :stats="stats"
       @filtrer="filtrer"
       @deconnecter="deconnecter"
     />
@@ -226,7 +228,7 @@ function onKeydown(e) {
         </button>
       </header>
 
-      <BandeauSynchro @nouvelles-donnees="onNouvellesDonnees" />
+      <BandeauSynchro :profil="moi.profil" @nouvelles-donnees="onNouvellesDonnees" />
 
       <StatsTickets v-if="stats" :stats="stats" :profil="moi.profil" />
       <TableTickets :tickets="tickets" @ouvrir="ouvrirDepuisListe" />
