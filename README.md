@@ -21,15 +21,26 @@ développement**.
 
 ## Lancer le POC (poste de développement)
 
-Il faut un PostgreSQL 16. Le plus simple : celui du `docker-compose.yml`.
+```bash
+npm run dev
+```
+
+Une seule commande : elle lance Docker Desktop s'il est arrêté, démarre le
+conteneur PostgreSQL, attend la base, puis démarre le portail (Ctrl+C pour
+l'arrêter). La configuration vient du fichier `.env` (ignoré par git).
+
+Première fois sur un poste :
 
 ```bash
-docker compose up -d base
 npm install
-# PowerShell : $env:DATABASE_URL = "postgres://portail:portail_demo@localhost:5432/portail"
-export DATABASE_URL=postgres://portail:portail_demo@localhost:5432/portail
-npm start
+cp .env.exemple .env          # PowerShell : Copy-Item .env.exemple .env
+docker compose up -d base     # crée la base PostgreSQL de démo (conteneur portail-tickets-base)
+npm run dev
 ```
+
+`npm start` lance le portail seul, sans rien démarrer d'autre : c'est la
+commande de la production (service Windows), qui attend `DATABASE_URL` dans
+son environnement.
 
 Puis ouvrir http://localhost:3000 et choisir un compte fictif :
 

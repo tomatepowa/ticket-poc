@@ -5,6 +5,7 @@
   "main": "server.js",
   "type": "commonjs",
   "scripts": {
+    "dev": "node scripts/dev.js",
     "start": "node server.js",
     "build": "vite build",
     "reset-demo": "node scripts/reset-demo.js"

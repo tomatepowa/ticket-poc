@@ -4,3 +4,6 @@ dist/
 
 # Base de l'EV simulé : recréée par `npm run reset-demo`
 data/
+
+# Configuration locale (mots de passe) : jamais dans git. Modele : .env.exemple
+.env
