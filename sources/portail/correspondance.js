@@ -5,6 +5,12 @@
 // C'est LE fichier a adapter a votre parametrage EV (noms exacts des statuts,
 // des types d'action, des groupes, ids d'urgence et d'impact).
 // Les valeurs ci-dessous correspondent a l'EV simule (sources/clients/simule).
+//
+// Cles des tables (statuts, typesAction, groupes...) : le LIBELLE EV, ou mieux
+// son IDENTIFIANT (GUID de statut, ID de type d'action, ID de groupe) : avec
+// l'identifiant, un renommage dans EV ne casse rien. Le portail essaie
+// l'identifiant d'abord, puis le libelle. Tout statut ou type d'action rencontre
+// mais absent d'ici est signale par le controle de correspondance (synchro).
 
 module.exports = {
   // Statut EV (STATUS_FR) -> statut du portail (couleurs, filtres, stats).
@@ -54,6 +60,27 @@ module.exports = {
 
   // Type d'action EV utilise pour les commentaires ajoutes depuis le portail.
   typeCommentaire: "Commentaire",
+
+  // Types d'action EV connus qui ne sont PAS des etapes de workflow (traces,
+  // commentaires...) : ils ne declenchent pas d'alerte de correspondance.
+  typesActionHorsWorkflow: ["Commentaire", "Suspension", "Reprise", "Clôture"],
+
+  // Elements desactives dans EV (EV archive plutot que supprimer) : champ date
+  // de fin / de depart. Un element dont la date est passee est masque.
+  // A VERIFIER sur la vraie instance : noms exacts des champs.
+  champsFin: {
+    etablissement: "END_DATE",
+    catalogue: "END_DATE",
+    employe: "DEPARTURE_DATE",
+  },
+
+  // Questionnaires (formulaires) :
+  //  - champ de l'entree de catalogue qui donne son questionnaire (A VERIFIER) ;
+  //  - creationSansWorkflow : creer le ticket sans workflow, enregistrer les
+  //    reponses, PUIS demarrer le workflow (EV 2026.1+). Indispensable si une
+  //    etape depend d'une reponse. Sinon : creation classique puis reponses.
+  champQuestionnaireCatalogue: "QUESTIONNAIRE_ID",
+  creationSansWorkflow: true,
 
   // Profils du portail, deduits des groupes EV. Le portail est reserve aux equipes :
   //   SUPERVISEUR : membre d'un de ces groupes, voit et peut traiter tous les tickets

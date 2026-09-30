@@ -51,6 +51,13 @@ db.exec(`
     choice TEXT
   );
   CREATE INDEX IF NOT EXISTS idx_actions_request ON actions(request_id);
+  CREATE TABLE IF NOT EXISTS question_results (
+    request_id INTEGER NOT NULL,
+    question_id INTEGER NOT NULL,
+    value TEXT,
+    date TEXT NOT NULL,
+    PRIMARY KEY (request_id, question_id)
+  );
 `);
 
 // ---------- Referentiels ----------
@@ -219,9 +226,20 @@ function ajouterAction(r, typeId, { group_id = null, done_by_id = null, comment 
 const estIncident = (r) => r.rfc_number.startsWith("I");
 const typeTraitement = (r) => (estIncident(r) ? D.T["Traitement incident"] : D.T["Réalisation demande"]);
 
+const reponse = (requestId, questionId) =>
+  db.prepare("SELECT value FROM question_results WHERE request_id = ? AND question_id = ?").get(requestId, questionId)?.value;
+
+// Validation : oui / non, ou selon une reponse du questionnaire (ex. montant > 500 €).
+// Une regle sur reponse ne marche que si les reponses sont enregistrees avant le demarrage.
+function validationRequise(r, cat) {
+  const v = cat.VALIDATION;
+  if (v && typeof v === "object") return Number(reponse(r.request_id, v.question)) > v.superieurA;
+  return Boolean(v);
+}
+
 function demarrerWorkflow(r, date) {
   const cat = catalogue(r.catalog_id);
-  if (!estIncident(r) && cat.VALIDATION) {
+  if (!estIncident(r) && validationRequise(r, cat)) {
     // Valideur : le manager du demandeur, a defaut un membre de la supervision.
     const dem = employe(r.requestor_id);
     const valideur = dem.MANAGER_ID || D.GROUPS.find((g) => g.GROUP_ID === D.GROUPE_SUPERVISION).MEMBERS[0];
@@ -265,7 +283,9 @@ function numero(prefixe, date) {
   return `${prefixe}${jour}_${String((m || 0) + 1).padStart(6, "0")}`;
 }
 
-function opCreerRequest(body, date) {
+// sansWorkflow : equivalent de POST /requests/without-workflow (EV 2026.1+) ; le
+// workflow est lance plus tard par opDemarrerWorkflow, apres les reponses.
+function opCreerRequest(body, date, { sansWorkflow = false } = {}) {
   const b = minuscules((body.requests || [])[0] || body.request || body);
   const cat =
     trouver(D.CATALOG, "CODE", b.catalog_code) ||
@@ -302,8 +322,46 @@ function opCreerRequest(body, date) {
     iso,
     new Date(date.getTime() + D.DELAI_HEURES[prio] * 3600e3).toISOString()
   );
-  demarrerWorkflow(ligneRequest(rfc), date);
+  if (!sansWorkflow) demarrerWorkflow(ligneRequest(rfc), date);
   return { HREF: `${BASE}/requests/${rfc}` };
+}
+
+function opDemarrerWorkflow(rfc, date) {
+  const r = ligneRequest(rfc);
+  if (db.prepare("SELECT COUNT(*) n FROM actions WHERE request_id = ?").get(r.request_id).n > 0) {
+    throw new ErreurSource(409, "Workflow already started");
+  }
+  demarrerWorkflow(r, date);
+  return { HREF: `${BASE}/requests/${rfc}` };
+}
+
+// ---------- Questionnaires ----------
+
+const questionnaire = (id) => trouver(D.QUESTIONNAIRES, "QUESTIONNAIRE_ID", id);
+
+function formatQuestionnaire(q) {
+  return { HREF: `${BASE}/questionnaires/${q.QUESTIONNAIRE_ID}`, ...q };
+}
+
+function opReponse(requestId, questionId, body, date) {
+  const r = db.prepare("SELECT * FROM requests WHERE request_id = ?").get(requestId);
+  if (!r) throw new ErreurSource(404, "Request not found");
+  const b = minuscules(body);
+  const valeur = Array.isArray(b.value) ? b.value.join("|") : b.value == null ? null : String(b.value);
+  db.prepare(
+    `INSERT INTO question_results (request_id, question_id, value, date) VALUES (?, ?, ?, ?)
+     ON CONFLICT(request_id, question_id) DO UPDATE SET value = excluded.value, date = excluded.date`
+  ).run(r.request_id, Number(questionId), valeur, date.toISOString());
+  majRequest(r, {}, date);
+  return { HREF: `${BASE}/questions-result/${requestId}/${questionId}` };
+}
+
+function libelleQuestion(id) {
+  for (const q of D.QUESTIONNAIRES) {
+    const question = q.QUESTIONS.find((x) => x.QUESTION_ID === Number(id));
+    if (question) return question.QUESTION_FR;
+  }
+  return null;
 }
 
 function opCreerAction(rfc, body, date) {
@@ -414,6 +472,8 @@ function seedDemo() {
   db.transaction(() => {
     [...DEMO].sort((a, b) => b.heures - a.heures).forEach((d) => {
       const dem = parLogin(d.demandeur);
+      // Avec questionnaire : creation sans workflow, reponses, puis demarrage.
+      const avecReponses = Boolean(d.reponses);
       const { HREF } = opCreerRequest(
         {
           requests: [
@@ -427,9 +487,15 @@ function seedDemo() {
             },
           ],
         },
-        ilYa(d.heures)
+        ilYa(d.heures),
+        { sansWorkflow: avecReponses }
       );
       const rfc = HREF.split("/").pop();
+      if (avecReponses) {
+        const { request_id } = ligneRequest(rfc);
+        Object.entries(d.reponses).forEach(([q, v]) => opReponse(request_id, q, { value: v }, ilYa(d.heures)));
+        opDemarrerWorkflow(rfc, ilYa(d.heures));
+      }
       d.etapes.forEach(([op, login, h, commentaire, choix]) => {
         const e = parLogin(login);
         const date = ilYa(h);
@@ -440,6 +506,9 @@ function seedDemo() {
         if (op === "suspendre") opMajRequest(rfc, { suspended: { comment: commentaire, done_by_id: e.EMPLOYEE_ID } }, date);
         if (op === "commenter")
           opCreerAction(rfc, { action: { action_type_name: "Commentaire", group_id: enCours.group_id, done_by_id: e.EMPLOYEE_ID, comment: commentaire } }, date);
+        // Type d'action cree dans EV mais inconnu du portail (controle de correspondance)
+        if (op === "intervention")
+          opCreerAction(rfc, { action: { action_type_name: "Intervention sur site", group_id: enCours.group_id, done_by_id: e.EMPLOYEE_ID, comment: commentaire } }, date);
       });
     });
   })();
@@ -503,9 +572,53 @@ module.exports = {
     return enTransaction(opMajRequest)(rfc, body, new Date());
   },
 
+  // ---------- Questionnaires ----------
+
+  // POST /requests/without-workflow (EV 2026.1+)
+  async createRequestWithoutWorkflow(body) {
+    return enTransaction(opCreerRequest)(body, new Date(), { sansWorkflow: true });
+  },
+  // PUT /requests/{rfc}/workflowstart (EV 2026.1+)
+  async startWorkflow(rfc) {
+    return enTransaction(opDemarrerWorkflow)(rfc, new Date());
+  },
+  // GET /questionnaires/{id} (+ questions)
+  async getQuestionnaire(id) {
+    const q = questionnaire(id);
+    if (!q) throw new ErreurSource(404, "Questionnaire not found");
+    return formatQuestionnaire(q);
+  },
+  // GET /requests/{rfc}/actions/{action_id}/questionnaire (EV 2023.4+) : null si l'etape n'en demande pas
+  async getActionQuestionnaire(rfc, actionId /* , actionTypeId : inutile ici */) {
+    const r = ligneRequest(rfc);
+    const a = db.prepare("SELECT * FROM actions WHERE action_id = ? AND request_id = ?").get(actionId, r.request_id);
+    if (!a) throw new ErreurSource(404, "Action not found");
+    const type = typeAction(a.action_type_id).NAME_FR;
+    const lien = D.ACTION_QUESTIONNAIRES.find(([cat, t]) => cat === r.catalog_id && t === type);
+    return lien ? formatQuestionnaire(questionnaire(lien[2])) : null;
+  },
+  // GET /questions-result/{request_id}
+  async getQuestionResults(requestId) {
+    const lignes = db.prepare("SELECT * FROM question_results WHERE request_id = ? ORDER BY question_id").all(requestId);
+    return {
+      record_count: lignes.length,
+      records: lignes.map((l) => ({
+        REQUEST_ID: l.request_id,
+        QUESTION_ID: l.question_id,
+        QUESTION_FR: libelleQuestion(l.question_id),
+        VALUE: l.value,
+        DATE_UT: l.date,
+      })),
+    };
+  },
+  // POST /questions-result/{request_id}/{question_id}
+  async createQuestionResult(requestId, questionId, body) {
+    return enTransaction(opReponse)(requestId, questionId, body, new Date());
+  },
+
   // Propre a la simulation (hors interface EV)
   reinitialiserDemo() {
-    db.exec("DELETE FROM actions; DELETE FROM requests; DELETE FROM sqlite_sequence;");
+    db.exec("DELETE FROM question_results; DELETE FROM actions; DELETE FROM requests; DELETE FROM sqlite_sequence;");
     seedDemo();
   },
   fermer() {

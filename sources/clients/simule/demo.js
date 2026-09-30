@@ -6,6 +6,8 @@
 //   ["commenter", login, heures, commentaire]
 // urgence / impact : ids EV (1 = le plus fort), voir donnees.js.
 // Le ticket est cree dans l'etablissement du demandeur.
+// reponses : { id_question: valeur } -> creation sans workflow, reponses, puis demarrage.
+//   ["intervention", login, heures, commentaire] : action "Intervention sur site" (type inconnu du portail)
 
 module.exports = [
   {
@@ -54,7 +56,10 @@ module.exports = [
   {
     catalogue: 114, titre: "Pousse-seringue connecté ne remonte plus les données", demandeur: "nfaure", urgence: 1, impact: 2, heures: 3,
     description: "Service de psychiatrie adulte, chambre 12.",
-    etapes: [],
+    etapes: [
+      ["prendre", "pfabre", 2.5],
+      ["intervention", "pfabre", 2, "Déplacement du prestataire prévu à 14h."],
+    ],
   },
   {
     catalogue: 115, titre: "Mail suspect reçu par plusieurs agents", demandeur: "arobert", urgence: 1, impact: 2, heures: 1,
@@ -77,11 +82,22 @@ module.exports = [
   {
     catalogue: 202, titre: "Écran supplémentaire pour le secrétariat", demandeur: "jroux", heures: 20,
     description: "Un second écran pour consulter le planning en parallèle.",
+    reponses: { 1: "Écran", 3: 650, 4: "Écran 32 pouces pour le planning du bloc, consulté en continu.", 5: "2026-10-15" },
     etapes: [],
+  },
+  {
+    catalogue: 202, titre: "Clavier et souris pour le poste d'accueil", demandeur: "bgarcia", heures: 7,
+    description: "Clavier cassé.",
+    reponses: { 1: "Autre", 2: "Clavier + souris filaires", 3: 45, 4: "Remplacement de matériel défectueux." },
+    etapes: [["prendre", "evidal", 6]],
   },
   {
     catalogue: 211, titre: "Arrivée d'une aide-soignante le 1er du mois", demandeur: "arobert", heures: 8,
     description: "Création des comptes (session, DPI, planning) et badge.",
+    reponses: {
+      10: "Arrivée", 11: "Inès Laurent", 12: "2026-11-01", 13: "EHPAD — unité Alzheimer",
+      14: ["Session Windows", "DPI", "Planning", "Badge"],
+    },
     etapes: [],
   },
   {

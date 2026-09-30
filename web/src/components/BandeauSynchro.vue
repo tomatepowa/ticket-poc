@@ -7,7 +7,13 @@ import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import { api } from "../api.js";
 import { formatDepuis, formatHeure, toast } from "../outils.js";
 
+const props = defineProps({ profil: { type: String, required: true } });
 const emit = defineEmits(["nouvelles-donnees"]);
+
+// Correspondance EV -> portail incomplete (statut, type d'action ou groupe
+// inconnu) : signalee aux superviseurs, qui font le lien avec l'admin EV.
+const TYPE_ANOMALIE = { statut: "Statut", type_action: "Type d'action", groupe: "Groupe de profil introuvable" };
+const anomalies = computed(() => (props.profil === "SUPERVISEUR" ? etat.value?.anomalies || [] : []));
 
 const etat = ref(null);
 const maintenant = ref(Date.now());
@@ -75,5 +81,14 @@ onBeforeUnmount(() => {
     <button class="btn btn-small" type="button" :disabled="enCours || etat.en_cours" @click="rafraichir">
       {{ enCours || etat.en_cours ? "Synchronisation…" : "Rafraîchir" }}
     </button>
+  </div>
+  <div v-if="anomalies.length" class="anomalies" role="alert">
+    <strong>Correspondance EasyVista à compléter</strong> (sources/portail/correspondance.js) :
+    <ul>
+      <li v-for="a in anomalies" :key="a.type + a.valeur">
+        {{ TYPE_ANOMALIE[a.type] || a.type }} « {{ a.valeur }} »
+        <template v-if="a.exemple">— {{ a.nb_tickets }} ticket{{ a.nb_tickets > 1 ? "s" : "" }}, ex. {{ a.exemple }}</template>
+      </li>
+    </ul>
   </div>
 </template>

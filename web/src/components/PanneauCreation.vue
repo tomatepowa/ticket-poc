@@ -5,6 +5,8 @@
 import { computed, onMounted, ref, watch } from "vue";
 import { api } from "../api.js";
 import { MATRICE_PRIORITE, PRIORITE_LABEL, debounce } from "../outils.js";
+import { champsManquants, reponsesVisibles } from "../formulaires.js";
+import FormulaireEV from "./FormulaireEV.vue";
 
 const props = defineProps({
   referentiels: { type: Object, required: true },
@@ -33,6 +35,23 @@ const catalogueChoisi = computed(() => props.referentiels.catalogue.find((c) => 
 const priorite = computed(() => MATRICE_PRIORITE[impact.value][urgence.value]);
 
 watch(type, () => (catalogueId.value = ""));
+
+// Formulaire EV de l'entrée de catalogue choisie (s'il y en a un).
+const questionnaire = ref(null);
+const reponses = ref({});
+watch(catalogueId, async () => {
+  questionnaire.value = null;
+  reponses.value = {};
+  const id = catalogueChoisi.value?.questionnaire_id;
+  if (!id) return;
+  try {
+    const q = await api(`/questionnaires/${id}`);
+    // Le choix a pu changer pendant le chargement.
+    if (catalogueChoisi.value?.questionnaire_id === id) questionnaire.value = q;
+  } catch (err) {
+    erreur.value = `Formulaire indisponible : ${err.message}`;
+  }
+});
 onMounted(() => champDemandeur.value.focus());
 
 const chercher = debounce(async (texte) => {
@@ -62,6 +81,11 @@ async function creer() {
     champDemandeur.value?.focus();
     return;
   }
+  const manquants = champsManquants(questionnaire.value, reponses.value);
+  if (manquants.length) {
+    erreur.value = `Formulaire incomplet : ${manquants.join(", ")}.`;
+    return;
+  }
   const payload = {
     demandeur_id: demandeur.value.id,
     origine: origine.value,
@@ -70,6 +94,7 @@ async function creer() {
     description: description.value,
     etablissement_id: Number(etablissementId.value),
     ...(type.value === "INCIDENT" ? { impact: impact.value, urgence: urgence.value } : {}),
+    ...(questionnaire.value ? { reponses: reponsesVisibles(questionnaire.value, reponses.value) } : {}),
   };
   enCours.value = true;
   try {
@@ -153,6 +178,8 @@ async function creer() {
           groupe prévu par son workflow.
         </p>
       </div>
+
+      <FormulaireEV v-if="questionnaire" v-model="reponses" :questionnaire="questionnaire" prefixe="c-q" />
 
       <div class="field">
         <label for="c-titre">Titre</label>

@@ -3,6 +3,8 @@
 import { computed, ref } from "vue";
 import { api } from "../api.js";
 import { PRIORITE_LABEL, formatDateTime, formatHeure, lienTicket, toast } from "../outils.js";
+import { champsManquants, reponsesVisibles } from "../formulaires.js";
+import FormulaireEV from "./FormulaireEV.vue";
 
 const props = defineProps({
   ticket: { type: Object, required: true },
@@ -36,8 +38,34 @@ function classeEtape(i) {
   return i < position ? "is-done" : i === position ? "is-current" : "";
 }
 
+// Étape qui demande un formulaire EV : on l'affiche d'abord, l'action part à la validation.
+const actionFormulaire = ref(null);
+const reponses = ref({});
+
+function demander(action) {
+  erreur.value = "";
+  if (action.questionnaire) {
+    actionFormulaire.value = action;
+    reponses.value = {};
+  } else {
+    executer(action);
+  }
+}
+
+function annulerFormulaire() {
+  actionFormulaire.value = null;
+  erreur.value = "";
+}
+
 async function executer(action) {
   erreur.value = "";
+  if (action.questionnaire) {
+    const manquants = champsManquants(action.questionnaire, reponses.value);
+    if (manquants.length) {
+      erreur.value = `Formulaire incomplet : ${manquants.join(", ")}.`;
+      return;
+    }
+  }
   const texte = commentaire.value.trim();
   if (action.commentaire && !texte) {
     erreur.value = "Un commentaire est obligatoire pour cette action.";
@@ -54,7 +82,12 @@ async function executer(action) {
   try {
     const resultat = await api(`/tickets/${encodeURIComponent(t.value.id)}/actions`, {
       method: "POST",
-      body: JSON.stringify({ action: action.code, commentaire: texte, groupe_id }),
+      body: JSON.stringify({
+        action: action.code,
+        commentaire: texte,
+        groupe_id,
+        ...(action.questionnaire ? { reponses: reponsesVisibles(action.questionnaire, reponses.value) } : {}),
+      }),
     });
     emit("fait", { action, resultat });
   } catch (err) {
@@ -142,21 +175,41 @@ async function copierLien() {
           <option value="">Transférer vers… (choisir un groupe)</option>
           <option v-for="g in autresGroupes" :key="g.id" :value="g.id">{{ g.nom }}</option>
         </select>
-        <div class="status-actions">
+        <!-- Étape qui demande un formulaire EV : on le remplit, puis on valide l'action -->
+        <template v-if="actionFormulaire">
+          <FormulaireEV v-model="reponses" :questionnaire="actionFormulaire.questionnaire" prefixe="a-q" />
+          <div class="status-actions">
+            <button class="btn btn-primary" :disabled="enCours" @click="executer(actionFormulaire)">
+              Valider : {{ actionFormulaire.label }}
+            </button>
+            <button class="btn" type="button" :disabled="enCours" @click="annulerFormulaire">Annuler</button>
+          </div>
+        </template>
+        <div v-else class="status-actions">
           <button
             v-for="(action, i) in t.actions"
             :key="action.code"
             :class="i === iPrincipale ? 'btn btn-primary' : 'btn'"
             :disabled="enCours"
-            @click="executer(action)"
+            @click="demander(action)"
           >
-            {{ action.commentaire ? `${action.label} *` : action.label }}
+            {{ action.commentaire ? `${action.label} *` : action.label }}{{ action.questionnaire ? " (formulaire)" : "" }}
           </button>
         </div>
         <p class="form-error" role="alert">{{ erreur }}</p>
       </div>
 
       <p class="detail-desc" :class="{ 'is-empty': !t.description }">{{ t.description || "Pas de description." }}</p>
+
+      <div v-if="t.formulaire" class="field">
+        <span class="section-label">{{ t.formulaire.titre }}</span>
+        <dl class="detail-grid reponses">
+          <div v-for="(r, i) in t.formulaire.reponses" :key="i">
+            <dt>{{ r.question }}</dt>
+            <dd>{{ r.valeur }}</dd>
+          </div>
+        </dl>
+      </div>
 
       <dl class="detail-grid">
         <div>

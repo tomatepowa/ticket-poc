@@ -124,4 +124,49 @@ module.exports = {
   async updateRequest(rfc, body) {
     return appel("PUT", `/requests/${encodeURIComponent(rfc)}`, { body });
   },
+
+  // ---------- Questionnaires ----------
+
+  // POST /requests/without-workflow (EV 2026.1+) : ticket cree sans lancer son workflow.
+  // A VERIFIER : cette route est documentee pour l'agent virtuel ; confirmer son usage ici.
+  async createRequestWithoutWorkflow(body) {
+    return appel("POST", "/requests/without-workflow", { body });
+  },
+  // PUT /requests/{rfc}/workflowstart (EV 2026.1+)
+  // A VERIFIER : la doc mentionne un parametre _flowcheck (agent virtuel).
+  async startWorkflow(rfc) {
+    return appel("PUT", `/requests/${encodeURIComponent(rfc)}/workflowstart`);
+  },
+  // GET /questionnaires/{id} + GET /questions-questionnaire/{id} (EV 2023.2+), assembles
+  // au format attendu par portail/questionnaires.js (QUESTIONS: [...]).
+  // A VERIFIER : noms des champs d'une question (type, obligatoire, choix, condition).
+  async getQuestionnaire(id) {
+    const [questionnaire, questions] = await Promise.all([
+      appel("GET", `/questionnaires/${encodeURIComponent(id)}`),
+      appel("GET", `/questions-questionnaire/${encodeURIComponent(id)}`),
+    ]);
+    return { ...questionnaire, QUESTIONS: questions?.records || questions?.QUESTIONS || [] };
+  },
+  // GET /requests/{rfc}/actions/{action_id}/questionnaire?actionTypeId=... (EV 2023.4+)
+  // null si l'etape ne demande pas de formulaire.
+  async getActionQuestionnaire(rfc, actionId, actionTypeId) {
+    try {
+      const q = await appel("GET", `/requests/${encodeURIComponent(rfc)}/actions/${encodeURIComponent(actionId)}/questionnaire`, {
+        query: { actionTypeId },
+      });
+      return q && (q.QUESTIONS || q.records) ? { ...q, QUESTIONS: q.QUESTIONS || q.records } : null;
+    } catch (err) {
+      if (err.status === 404) return null;
+      throw err;
+    }
+  },
+  // GET /questions-result/{request_id} : reponses d'un ticket
+  async getQuestionResults(requestId) {
+    return enListe(await appel("GET", `/questions-result/${encodeURIComponent(requestId)}`));
+  },
+  // POST /questions-result/{request_id}/{question_id}
+  // A VERIFIER : nom du champ de valeur dans le corps, format des choix multiples.
+  async createQuestionResult(requestId, questionId, body) {
+    return appel("POST", `/questions-result/${encodeURIComponent(requestId)}/${encodeURIComponent(questionId)}`, { body });
+  },
 };

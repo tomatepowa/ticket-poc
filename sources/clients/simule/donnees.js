@@ -47,6 +47,14 @@ const LOCATIONS = ETABLISSEMENTS.map(([nom, ville, type], i) => ({
   CITY: ville,
   LOCATION_PATH: `${type}/${nom}`,
 }));
+// Site ferme (fictif) : EV archive plutot que supprimer. Le portail doit le masquer.
+LOCATIONS.push({
+  LOCATION_ID: 99,
+  LOCATION_FR: "Annexe logistique (site fermé)",
+  CITY: "",
+  LOCATION_PATH: "Logistique/Annexe logistique (site fermé)",
+  END_DATE: "2025-12-31T00:00:00.000Z",
+});
 const L = Object.fromEntries(LOCATIONS.map((l) => [l.LOCATION_FR, l.LOCATION_ID]));
 
 // Groupes EV. Les deux derniers ne traitent pas de tickets :
@@ -96,15 +104,19 @@ const PERSONNES = [
   ["nfaure", "Faure, Nicolas", "Infirmier", "Clinique Les Sources", [], "proche"],
   ["arobert", "Robert, Anne", "Assistante RH", "Résidence Les Hortensias", [], "mleroy"],
   ["bgarcia", "Garcia, Benoît", "Kinésithérapeute", "Clinique Les Cèdres", [], null],
+  // Partis (date de depart passee) : toujours dans EV, plus d'acces ni de saisie possible.
+  ["kmorel", "Morel, Kévin", "Technicien Service Desk", "Siège Groupe Exemple", [1], null, "2026-06-30"],
+  ["cbernardi", "Bernardi, Chloé", "Infirmière", "Clinique des Tilleuls", [], null, "2026-03-31"],
 ];
 
-const EMPLOYEES = PERSONNES.map(([login, nom, fonction, site, groupes, manager], i) => ({
+const EMPLOYEES = PERSONNES.map(([login, nom, fonction, site, groupes, manager, depart], i) => ({
   EMPLOYEE_ID: i + 1,
   LAST_NAME: nom,
   IDENTIFICATION: login,
   E_MAIL: `${login}@exemple.test`,
   JOB_TITLE: fonction,
   LOCATION_ID: L[site],
+  DEPARTURE_DATE: depart ? `${depart}T00:00:00.000Z` : null,
   GROUPES: groupes,
   MANAGER_LOGIN: manager || null,
 }));
@@ -128,10 +140,16 @@ const ACTION_TYPES = [
   "Suspension",
   "Reprise",
   "Clôture",
+  // Type ajoute "dans EV" sans etre declare dans correspondance.js : le controle
+  // de correspondance du portail doit le signaler.
+  "Intervention sur site",
 ].map((n, i) => ({ ACTION_TYPE_ID: i + 1, NAME_FR: n }));
 const T = Object.fromEntries(ACTION_TYPES.map((t) => [t.NAME_FR, t.ACTION_TYPE_ID]));
 
-// Catalogue : [id, titre, chemin, groupe, validation]. Le chemin commence par "Incidents/" ou "Demandes/".
+// Catalogue : [id, titre, chemin, groupe, validation, fin]. Le chemin commence par "Incidents/" ou "Demandes/".
+// validation : true, false, ou une regle sur une reponse du questionnaire
+// ({ question, superieurA }) -> elle n'est evaluable que si les reponses sont
+// enregistrees AVANT le demarrage du workflow.
 const CATALOG = [
   [101, "Messagerie (Outlook / MDaemon)", "Incidents/Infrastructure/Messagerie", 1],
   [102, "PC, écran ou périphérique en panne", "Incidents/Infrastructure/Poste de travail", 1],
@@ -149,8 +167,9 @@ const CATALOG = [
   [114, "Équipement biomédical connecté", "Incidents/Biomédical", 10],
   [115, "Mail suspect, virus ou hameçonnage", "Incidents/Sécurité", 9],
   [116, "Autre / à qualifier", "Incidents/Support/À qualifier", 1],
+  [117, "Fax (service arrêté)", "Incidents/Téléphonie", 3, false, "2025-06-30"], // obsolete : masque par le portail
   [201, "Installer un logiciel standard (Office, PDF…)", "Demandes/Infrastructure/Poste de travail", 1, false],
-  [202, "Nouveau matériel (PC, écran, périphérique)", "Demandes/Logistique/Matériel", 11, true],
+  [202, "Nouveau matériel (PC, écran, périphérique)", "Demandes/Logistique/Matériel", 11, { question: 3, superieurA: 500 }],
   [203, "Créer ou supprimer un compte utilisateur", "Demandes/Infrastructure/Comptes", 1, true],
   [204, "Accès à un logiciel métier", "Demandes/Métier/Habilitations", 4, true],
   [205, "Paramétrage du DPI", "Demandes/Métier/DPI", 5, true],
@@ -161,14 +180,62 @@ const CATALOG = [
   [210, "Montée de version ou migration", "Demandes/Projets/Évolution", 6, true],
   [211, "Arrivée ou départ d'un collaborateur", "Demandes/SIRH/Mouvements", 8, true],
   [212, "Nouvelle ligne ou nouveau poste téléphonique", "Demandes/Téléphonie", 3, true],
-].map(([id, titre, chemin, groupe, validation = false]) => ({
+].map(([id, titre, chemin, groupe, validation = false, fin]) => ({
   SD_CATALOG_ID: id,
   CODE: String(id),
   TITLE_FR: titre,
   CATALOG_REQUEST_PATH: `${chemin}/${titre}`,
+  END_DATE: fin ? `${fin}T00:00:00.000Z` : null,
+  QUESTIONNAIRE_ID: { 202: 1, 211: 2 }[id] || null,
   GROUP_ID: groupe,
   VALIDATION: validation,
 }));
+
+// Questionnaires (formulaires) EV. Types : TEXT, MEMO, NUMBER, DATE, LIST
+// (choix unique), MULTI (choix multiples), BOOLEAN. CONDITION : la question
+// n'apparait que si une autre question a l'une des valeurs listees.
+const QUESTIONNAIRES = [
+  {
+    QUESTIONNAIRE_ID: 1,
+    NAME_FR: "Nouveau matériel",
+    QUESTIONS: [
+      { QUESTION_ID: 1, QUESTION_FR: "Type de matériel", QUESTION_TYPE: "LIST", MANDATORY: true,
+        ANSWERS: ["PC fixe", "PC portable", "Écran", "Imprimante", "Autre"] },
+      { QUESTION_ID: 2, QUESTION_FR: "Précisez le matériel", QUESTION_TYPE: "TEXT", MANDATORY: true,
+        CONDITION: { QUESTION_ID: 1, VALUES: ["Autre"] } },
+      { QUESTION_ID: 3, QUESTION_FR: "Montant estimé (€ TTC)", QUESTION_TYPE: "NUMBER", MANDATORY: true,
+        HELP_FR: "Au-delà de 500 €, la demande passe en validation hiérarchique." },
+      { QUESTION_ID: 4, QUESTION_FR: "Justification", QUESTION_TYPE: "MEMO", MANDATORY: true },
+      { QUESTION_ID: 5, QUESTION_FR: "Date souhaitée", QUESTION_TYPE: "DATE", MANDATORY: false },
+    ],
+  },
+  {
+    QUESTIONNAIRE_ID: 2,
+    NAME_FR: "Arrivée ou départ d'un collaborateur",
+    QUESTIONS: [
+      { QUESTION_ID: 10, QUESTION_FR: "Mouvement", QUESTION_TYPE: "LIST", MANDATORY: true, ANSWERS: ["Arrivée", "Départ", "Mutation"] },
+      { QUESTION_ID: 11, QUESTION_FR: "Nom et prénom du collaborateur", QUESTION_TYPE: "TEXT", MANDATORY: true },
+      { QUESTION_ID: 12, QUESTION_FR: "Date d'effet", QUESTION_TYPE: "DATE", MANDATORY: true },
+      { QUESTION_ID: 13, QUESTION_FR: "Service / unité", QUESTION_TYPE: "TEXT", MANDATORY: true },
+      { QUESTION_ID: 14, QUESTION_FR: "Accès à prévoir", QUESTION_TYPE: "MULTI", MANDATORY: true,
+        ANSWERS: ["Session Windows", "Messagerie", "DPI", "Planning", "Badge"],
+        CONDITION: { QUESTION_ID: 10, VALUES: ["Arrivée", "Mutation"] } },
+      { QUESTION_ID: 15, QUESTION_FR: "Du matériel est-il à restituer ?", QUESTION_TYPE: "BOOLEAN", MANDATORY: true,
+        CONDITION: { QUESTION_ID: 10, VALUES: ["Départ"] } },
+    ],
+  },
+  {
+    QUESTIONNAIRE_ID: 3,
+    NAME_FR: "Livraison du matériel",
+    QUESTIONS: [
+      { QUESTION_ID: 20, QUESTION_FR: "N° d'inventaire", QUESTION_TYPE: "TEXT", MANDATORY: true },
+      { QUESTION_ID: 21, QUESTION_FR: "Date de livraison", QUESTION_TYPE: "DATE", MANDATORY: true },
+    ],
+  },
+];
+
+// Questionnaire demande a la fin d'une etape : [catalogue, type d'action, questionnaire]
+const ACTION_QUESTIONNAIRES = [[202, "Réalisation demande", 3]];
 
 // Urgence et impact (severity) EV : ids 1 = le plus fort.
 //   urgence : 1 = haute (bloque), 3 = basse
@@ -187,6 +254,8 @@ module.exports = {
   ACTION_TYPES,
   T,
   CATALOG,
+  QUESTIONNAIRES,
+  ACTION_QUESTIONNAIRES,
   PRIORITE,
   DELAI_HEURES,
 };

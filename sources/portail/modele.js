@@ -27,12 +27,31 @@ const idGroupe = (a) => Number(a.GROUP?.GROUP_ID ?? a.GROUP_ID) || null;
 const nomGroupe = (a) => a.GROUP?.GROUP_FR || a.GROUP?.GROUP_EN || null;
 const idAuteur = (a) => Number(a.DONE_BY_ID ?? a.DONE_BY?.EMPLOYEE_ID) || null;
 const rfcAction = (a) => a.REQUEST?.RFC_NUMBER;
-const etapeWorkflow = (a) => cfg.typesAction[nomType(a)] || null;
+// Correspondance : on cherche par identifiant EV d'abord, puis par libelle.
+const valeurs = (...cles) => cles.filter((k) => k != null && k !== "").map(String);
+function chercher(table, ...cles) {
+  for (const k of valeurs(...cles)) if (table[k] !== undefined) return table[k];
+  return undefined;
+}
+const dansListe = (liste, ...cles) => valeurs(...cles).some((k) => liste.map(String).includes(k));
+
+const idTypeAction = (a) => a.ACTION_TYPE?.ACTION_TYPE_ID ?? a.ACTION_TYPE_ID;
+const etapeWorkflow = (a) => chercher(cfg.typesAction, idTypeAction(a), nomType(a)) || null;
 const nomStatut = (req) => req.STATUS?.STATUS_FR || req.STATUS?.STATUS_EN || "";
-const estSuperviseurGroupe = (nom) => cfg.groupesSuperviseurs.includes(nom);
-const estValideurGroupe = (nom) => cfg.groupesValideurs.includes(nom);
+const clesStatut = (req) => [req.STATUS?.STATUS_GUID, req.STATUS?.STATUS_ID, nomStatut(req)];
+const statutConnu = (req) => chercher(cfg.statuts, ...clesStatut(req));
+const estStatut = (req, ...refs) => refs.some((ref) => valeurs(...clesStatut(req)).includes(String(ref)));
+// g = { id, nom } d'un groupe EV
+const estSuperviseurGroupe = (g) => dansListe(cfg.groupesSuperviseurs, g.id, g.nom);
+const estValideurGroupe = (g) => dansListe(cfg.groupesValideurs, g.id, g.nom);
 // Groupes qui donnent un profil mais ne traitent pas de tickets.
-const estGroupeTechnique = (nom) => estSuperviseurGroupe(nom) || estValideurGroupe(nom);
+const estGroupeTechnique = (g) => estSuperviseurGroupe(g) || estValideurGroupe(g);
+
+// Element desactive dans EV : date de fin / de depart passee.
+function estInactif(rec, champ) {
+  const v = champ ? rec?.[champ] : null;
+  return Boolean(v) && new Date(v).getTime() <= Date.now();
+}
 
 function typeDepuisChemin(chemin) {
   const entree = Object.entries(cfg.typeDepuisCheminCatalogue).find(([prefixe]) => String(chemin || "").startsWith(prefixe));
@@ -64,12 +83,14 @@ function priorite(req) {
 function versUtilisateur(employe, groupesEV) {
   const { nom, prenom } = decouperNom(employe.LAST_NAME);
   const groupes = groupesEV.map((g) => ({ id: Number(g.GROUP_ID), nom: g.GROUP_FR || g.GROUP_EN }));
-  const intervention = groupes.filter((g) => !estGroupeTechnique(g.nom));
-  const profil = groupes.some((g) => estSuperviseurGroupe(g.nom))
+  const intervention = groupes.filter((g) => !estGroupeTechnique(g));
+  const profil = estInactif(employe, cfg.champsFin.employe)
+    ? "AUCUN" // parti : plus d'acces, quels que soient ses groupes
+    : groupes.some((g) => estSuperviseurGroupe(g))
     ? "SUPERVISEUR"
     : intervention.length
       ? "INTERVENANT"
-      : groupes.some((g) => estValideurGroupe(g.nom))
+      : groupes.some((g) => estValideurGroupe(g))
         ? "VALIDEUR"
         : "AUCUN"; // pas d'acces au portail
   return {
@@ -95,10 +116,10 @@ function analyser(req, actions) {
   const principale = workflow[0] || null;
   const tc = principale ? etapeWorkflow(principale) : null;
   const statutEV = nomStatut(req);
-  const suspendu = statutEV === cfg.statutSuspendu;
+  const suspendu = estStatut(req, cfg.statutSuspendu);
   const affecte = principale ? idAuteur(principale) : null;
 
-  let statut = cfg.statuts[statutEV] || "EN_COURS";
+  let statut = statutConnu(req) || "EN_COURS";
   if (!suspendu && tc?.nature === "TRAITEMENT" && !affecte && statut === "EN_COURS") statut = "OUVERT";
 
   let etape;
@@ -107,13 +128,13 @@ function analyser(req, actions) {
       ? { code: tc.codeNonAffecte, label: tc.etapeNonAffectee }
       : { code: tc.code, label: tc.etape };
   } else {
-    const fin = statut === "CLOTURE" && !cfg.statutsSortie.includes(statutEV);
+    const fin = statut === "CLOTURE" && !estStatut(req, ...cfg.statutsSortie);
     etape = { code: fin ? "CLOTURE" : "HORS_PARCOURS", label: statutEV || "Inconnu" };
   }
 
   // Groupe affiche : celui du traitement en cours, sinon le dernier groupe d'intervenants connu
   // (le groupe porteur d'une validation n'a pas de sens pour l'utilisateur).
-  const avecGroupe = [...actions].reverse().find((a) => idGroupe(a) && !estGroupeTechnique(nomGroupe(a)));
+  const avecGroupe = [...actions].reverse().find((a) => idGroupe(a) && !estGroupeTechnique({ id: idGroupe(a), nom: nomGroupe(a) }));
   const refGroupe = (tc?.nature === "TRAITEMENT" ? principale : null) || avecGroupe;
   const validation = actions.find((a) => etapeWorkflow(a)?.nature === "VALIDATION");
 
@@ -203,6 +224,15 @@ function actionsPossibles(u, ctx) {
 
 const attendMonAction = (u, ctx) => actionsPossibles(u, ctx).some((a) => !a.secondaire);
 
+// A qui est l'etape en cours, du point de vue de l'utilisateur :
+//   "MOI" (affectee a moi), "TIERS" (a quelqu'un d'autre), "AUCUN" (personne), null (ticket sans etape en cours)
+function affectation(u, ctx) {
+  if (!ctx.principale) return null;
+  const auteur = idAuteur(ctx.principale);
+  if (!auteur) return "AUCUN";
+  return auteur === u.id ? "MOI" : "TIERS";
+}
+
 // ---------- Mise en forme pour le front ----------
 
 // titresCatalogue : Map SD_CATALOG_ID -> titre, pour decouper correctement le chemin.
@@ -233,6 +263,7 @@ function versTicket(ctx, u, titresCatalogue = new Map()) {
     echeance: req.MAX_RESOLUTION_DATE_UT || null,
     en_retard: !statutTermine && Boolean(req.MAX_RESOLUTION_DATE_UT) && new Date(req.MAX_RESOLUTION_DATE_UT) < new Date(),
     attend_mon_action: attendMonAction(u, ctx),
+    affectation: affectation(u, ctx),
   };
 }
 
@@ -297,6 +328,11 @@ module.exports = {
   lireCatalogue,
   typeDepuisChemin,
   etapeWorkflow,
+  statutConnu,
+  nomStatut,
+  nomType,
+  idTypeAction,
+  estInactif,
   idGroupe,
   idAuteur,
   rfcAction,
