@@ -7,7 +7,7 @@
   "scripts": {
     "start": "node server.js",
     "build": "vite build",
-    "reset-demo": "node -e \"const ev = require('./sources/clients/simule'); ev.reinitialiserDemo(); ev.fermer(); console.log('Donnees de demo de l EV simule recreees.')\""
+    "reset-demo": "node -e \"const ev = require('./sources/clients/simule'); const cache = require('./sources/portail/cache'); ev.reinitialiserDemo(); cache.vider(); ev.fermer(); cache.fermer(); console.log('Demo de l EV simule recreee, cache local vide (resynchronise au demarrage).')\""
   },
   "dependencies": {
     "better-sqlite3": "^12.11.1",

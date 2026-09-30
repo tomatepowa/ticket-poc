@@ -30,6 +30,9 @@ const rfcAction = (a) => a.REQUEST?.RFC_NUMBER;
 const etapeWorkflow = (a) => cfg.typesAction[nomType(a)] || null;
 const nomStatut = (req) => req.STATUS?.STATUS_FR || req.STATUS?.STATUS_EN || "";
 const estSuperviseurGroupe = (nom) => cfg.groupesSuperviseurs.includes(nom);
+const estValideurGroupe = (nom) => cfg.groupesValideurs.includes(nom);
+// Groupes qui donnent un profil mais ne traitent pas de tickets.
+const estGroupeTechnique = (nom) => estSuperviseurGroupe(nom) || estValideurGroupe(nom);
 
 function typeDepuisChemin(chemin) {
   const entree = Object.entries(cfg.typeDepuisCheminCatalogue).find(([prefixe]) => String(chemin || "").startsWith(prefixe));
@@ -61,8 +64,14 @@ function priorite(req) {
 function versUtilisateur(employe, groupesEV) {
   const { nom, prenom } = decouperNom(employe.LAST_NAME);
   const groupes = groupesEV.map((g) => ({ id: Number(g.GROUP_ID), nom: g.GROUP_FR || g.GROUP_EN }));
-  const superviseur = groupes.some((g) => estSuperviseurGroupe(g.nom));
-  const intervention = groupes.filter((g) => !estSuperviseurGroupe(g.nom));
+  const intervention = groupes.filter((g) => !estGroupeTechnique(g.nom));
+  const profil = groupes.some((g) => estSuperviseurGroupe(g.nom))
+    ? "SUPERVISEUR"
+    : intervention.length
+      ? "INTERVENANT"
+      : groupes.some((g) => estValideurGroupe(g.nom))
+        ? "VALIDEUR"
+        : "AUCUN"; // pas d'acces au portail
   return {
     id: Number(employe.EMPLOYEE_ID),
     prenom,
@@ -70,7 +79,7 @@ function versUtilisateur(employe, groupesEV) {
     nom_complet: prenom ? `${prenom} ${nom}` : nom,
     e_mail: employe.E_MAIL,
     fonction: employe.JOB_TITLE || "",
-    profil: superviseur ? "SUPERVISEUR" : intervention.length ? "INTERVENANT" : "UTILISATEUR",
+    profil,
     site: employe.LOCATION?.LOCATION_ID
       ? { id: Number(employe.LOCATION.LOCATION_ID), nom: employe.LOCATION.LOCATION_FR || employe.LOCATION.LOCATION_EN }
       : null,
@@ -104,7 +113,7 @@ function analyser(req, actions) {
 
   // Groupe affiche : celui du traitement en cours, sinon le dernier groupe d'intervenants connu
   // (le groupe porteur d'une validation n'a pas de sens pour l'utilisateur).
-  const avecGroupe = [...actions].reverse().find((a) => idGroupe(a) && !estSuperviseurGroupe(nomGroupe(a)));
+  const avecGroupe = [...actions].reverse().find((a) => idGroupe(a) && !estGroupeTechnique(nomGroupe(a)));
   const refGroupe = (tc?.nature === "TRAITEMENT" ? principale : null) || avecGroupe;
   const validation = actions.find((a) => etapeWorkflow(a)?.nature === "VALIDATION");
 
@@ -140,25 +149,32 @@ function roles(u, ctx) {
   };
 }
 
+// Outil reserve aux equipes : on voit un ticket si l'un de ses groupes (passe ou
+// present) est le sien, s'il nous a ete affecte (y compris une validation), ou si
+// on est superviseur.
 function peutVoir(u, ctx) {
   const r = roles(u, ctx);
-  return r.superviseur || r.demandeur || ctx.actions.some((a) => r.mesGroupes.has(idGroupe(a)) || idAuteur(a) === u.id);
+  return r.superviseur || ctx.actions.some((a) => r.mesGroupes.has(idGroupe(a)) || idAuteur(a) === u.id);
 }
 
 // Boutons proposes a l'utilisateur. `op` decrit l'appel EV a faire (reste cote serveur).
+// Pas d'action "demandeur" : le support agit pour le compte de l'utilisateur
+// (reprise apres reponse, cloture apres confirmation, reouverture).
 function actionsPossibles(u, ctx) {
   const r = roles(u, ctx);
   const p = ctx.principale;
+  const intervenant = u.profil === "INTERVENANT" || u.profil === "SUPERVISEUR";
   const res = [];
   if (ctx.statut === "CLOTURE") return res;
 
   if (ctx.suspendu) {
-    if (r.demandeur) res.push({ code: "REPONDRE", label: "Répondre", commentaire: true, op: { type: "REPRENDRE" } });
-    if (p ? r.dansGroupe(p) : r.superviseur) res.push({ code: "REPRENDRE", label: "Reprendre le traitement", op: { type: "REPRENDRE" } });
+    if (intervenant && (p ? r.dansGroupe(p) : r.superviseur)) {
+      res.push({ code: "REPRENDRE", label: "Reprendre le traitement", op: { type: "REPRENDRE" } });
+    }
   } else if (p) {
     const tc = ctx.tc;
     const id = p.ACTION_ID;
-    if (tc.nature === "TRAITEMENT" && r.dansGroupe(p)) {
+    if (tc.nature === "TRAITEMENT" && intervenant && r.dansGroupe(p)) {
       if (!r.assigne(p)) {
         res.push({ code: "PRENDRE", label: idAuteur(p) ? "M'affecter le ticket" : "Prendre en charge", op: { type: "AFFECTER", action_id: id } });
       }
@@ -172,21 +188,16 @@ function actionsPossibles(u, ctx) {
       res.push({ code: "VALIDER", label: "Valider la demande", op: { type: "TERMINER", action_id: id, choice: "1" } });
       res.push({ code: "REFUSER", label: "Refuser", commentaire: true, op: { type: "TERMINER", action_id: id, choice: "0" } });
     }
-    if (tc.nature === "CONFIRMATION") {
-      if (r.demandeur || r.assigne(p)) {
-        res.push({ code: "CONFIRMER", label: "Confirmer la résolution", op: { type: "TERMINER", action_id: id, choice: "1" } });
-        res.push({ code: "ROUVRIR", label: "Ce n'est pas résolu", commentaire: true, op: { type: "TERMINER", action_id: id, choice: "0" } });
-      } else if (r.dansGroupe(p)) {
-        res.push({ code: "CLOTURER", label: "Clôturer", op: { type: "TERMINER", action_id: id, choice: "1" } });
-      }
+    if (tc.nature === "CONFIRMATION" && intervenant && r.dansGroupe(p)) {
+      res.push({ code: "CLOTURER", label: "Clôturer (résolution confirmée)", op: { type: "TERMINER", action_id: id, choice: "1" } });
+      res.push({ code: "ROUVRIR", label: "Rouvrir (pas résolu)", commentaire: true, op: { type: "TERMINER", action_id: id, choice: "0" } });
     }
   }
 
-  // Actions "secondaires" : toujours possibles, mais pas attendues.
-  if (r.demandeur && !ctx.suspendu && (ctx.statut === "OUVERT" || ctx.tc?.nature === "VALIDATION")) {
-    res.push({ code: "ANNULER", label: "Annuler ma demande", commentaire: true, secondaire: true, op: { type: "ANNULER" } });
+  // Action "secondaire" : toujours possible, mais pas attendue.
+  if (intervenant || (p && r.assigne(p))) {
+    res.push({ code: "COMMENTER", label: "Ajouter un commentaire", commentaire: true, secondaire: true, op: { type: "COMMENTER" } });
   }
-  res.push({ code: "COMMENTER", label: "Ajouter un commentaire", commentaire: true, secondaire: true, op: { type: "COMMENTER" } });
   return res;
 }
 
@@ -290,4 +301,5 @@ module.exports = {
   idAuteur,
   rfcAction,
   estSuperviseurGroupe,
+  estGroupeTechnique,
 };

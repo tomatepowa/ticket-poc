@@ -1,7 +1,8 @@
 // Libelles, formats, liens directs et notification : partages par les composants.
 import { ref } from "vue";
 
-export const PROFIL_LABEL = { UTILISATEUR: "Utilisateur", INTERVENANT: "Intervenant", SUPERVISEUR: "Superviseur" };
+export const PROFIL_LABEL = { INTERVENANT: "Intervenant", VALIDEUR: "Valideur", SUPERVISEUR: "Superviseur" };
+export const PROFIL_LABEL_PLURIEL = { INTERVENANT: "Intervenants", VALIDEUR: "Cadres valideurs", SUPERVISEUR: "Superviseurs" };
 export const PRIORITE_LABEL = { 1: "Critique", 2: "Haute", 3: "Normale", 4: "Basse" };
 // Priorite d'un incident : MATRICE_PRIORITE[impact][urgence]
 export const MATRICE_PRIORITE = { 3: { 2: 1, 1: 2 }, 2: { 2: 2, 1: 3 }, 1: { 2: 3, 1: 4 } };
@@ -23,6 +24,19 @@ export function formatDateTime(iso) {
     hour: "2-digit",
     minute: "2-digit",
   });
+}
+
+export function formatHeure(iso) {
+  return new Date(iso).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+}
+
+// Age relatif : "à l'instant", "il y a 40 s", "il y a 3 min", "il y a 2 h"
+export function formatDepuis(iso, maintenant = Date.now()) {
+  const s = Math.max(0, Math.round((maintenant - new Date(iso).getTime()) / 1000));
+  if (s < 5) return "à l'instant";
+  if (s < 60) return `il y a ${s} s`;
+  if (s < 3600) return `il y a ${Math.floor(s / 60)} min`;
+  return `il y a ${Math.floor(s / 3600)} h`;
 }
 
 export function debounce(fn, delay) {

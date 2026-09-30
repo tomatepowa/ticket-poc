@@ -91,7 +91,7 @@ function changerTheme() {
         </select>
       </div>
 
-      <div v-if="moi.profil !== 'UTILISATEUR'" class="rail-group">
+      <div v-if="moi.profil !== 'VALIDEUR'" class="rail-group">
         <label for="f-groupe">Groupe</label>
         <select id="f-groupe" :value="filtres.groupe" @change="emit('filtrer', { groupe: $event.target.value })">
           <option value="">Tous</option>

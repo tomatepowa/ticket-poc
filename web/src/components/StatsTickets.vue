@@ -18,8 +18,10 @@ const cartes = computed(() => {
   ];
 });
 
-const voitGroupes = computed(() => props.profil !== "UTILISATEUR");
-const maxGroupe = computed(() => Math.max(1, ...props.stats.parGroupe.map((r) => r.n)));
+// Seuls les groupes ayant des tickets en cours, du plus chargé au moins chargé.
+const groupesCharges = computed(() => props.stats.parGroupe.filter((r) => r.n > 0).sort((a, b) => b.n - a.n));
+const voitGroupes = computed(() => props.profil !== "VALIDEUR" && groupesCharges.value.length > 0);
+const maxGroupe = computed(() => Math.max(1, ...groupesCharges.value.map((r) => r.n)));
 </script>
 
 <template>
@@ -32,7 +34,7 @@ const maxGroupe = computed(() => Math.max(1, ...props.stats.parGroupe.map((r) =>
     <div v-if="voitGroupes" class="stat stat-teams">
       <span class="stat-label">Charge en cours par groupe</span>
       <div class="teams">
-        <div v-for="r in stats.parGroupe" :key="r.groupe.id" class="team-row">
+        <div v-for="r in groupesCharges" :key="r.groupe.id" class="team-row">
           <span class="team-name" :title="r.groupe.nom">{{ r.groupe.nom }}</span>
           <span class="team-bar"><span :style="{ width: `${(r.n / maxGroupe) * 100}%` }"></span></span>
           <span class="team-n">{{ r.n }}</span>

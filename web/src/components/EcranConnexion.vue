@@ -2,7 +2,7 @@
 // Ecran de connexion. Mode developpement : choix d'un compte EV fictif.
 import { computed, onMounted, ref } from "vue";
 import { api } from "../api.js";
-import { PROFIL_LABEL, initiales, ticketDansUrl, toast } from "../outils.js";
+import { PROFIL_LABEL_PLURIEL, initiales, ticketDansUrl, toast } from "../outils.js";
 
 const props = defineProps({ config: { type: Object, required: true } });
 const emit = defineEmits(["connecte"]);
@@ -11,7 +11,7 @@ const comptes = ref([]);
 const cible = ticketDansUrl();
 
 const groupesComptes = computed(() =>
-  ["UTILISATEUR", "INTERVENANT", "SUPERVISEUR"]
+  ["INTERVENANT", "VALIDEUR", "SUPERVISEUR"]
     .map((profil) => ({ profil, comptes: comptes.value.filter((c) => c.profil === profil) }))
     .filter((g) => g.comptes.length)
 );
@@ -49,12 +49,12 @@ async function choisir(compte) {
       <template v-else>
         <p class="login-note">
           <template v-if="cible">Connectez-vous pour ouvrir le ticket {{ cible }}. </template>
-          Mode simulation : choisissez un compte EasyVista fictif. En production, la connexion se fera
-          automatiquement avec votre compte Windows (SSO).
+          Outil des équipes support et des cadres valideurs. Mode simulation : choisissez un compte
+          EasyVista fictif. En production, la connexion se fera automatiquement avec votre compte Windows (SSO).
         </p>
         <div class="login-list">
           <div v-for="g in groupesComptes" :key="g.profil" class="login-group">
-            <div class="login-group-title">{{ PROFIL_LABEL[g.profil] }}s</div>
+            <div class="login-group-title">{{ PROFIL_LABEL_PLURIEL[g.profil] }}</div>
             <button v-for="c in g.comptes" :key="c.id" class="login-account" @click="choisir(c)">
               <span class="avatar">{{ initiales(c) }}</span>
               <span class="login-account-info">

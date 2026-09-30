@@ -1,28 +1,45 @@
 // source.js — la source du portail, construite sur un client EasyVista.
 //
 // Le meme code tourne sur le faux EV (clients/simule) et sur la vraie API
-// (clients/http) : seul le client change. Ce fichier traduit chaque besoin
-// du portail en appels REST EV, et applique les droits via modele.js.
+// (clients/http) : seul le client change.
+//
+// Lecture / ecriture :
+//  - listes, filtres, stats : lus dans le cache local (cache.js), alimente par
+//    la synchro (synchro.js) -> aucun appel EV par affichage de liste ;
+//  - detail d'un ticket : lu EN DIRECT dans EV (repli sur le cache si EV est
+//    injoignable), et le cache est mis a jour au passage ;
+//  - actions et creations : envoyees a EV, puis le ticket est relu dans EV et
+//    le cache mis a jour, pour que l'utilisateur voie tout de suite le resultat.
+// Les droits de chaque utilisateur sont appliques ici (modele.js).
+//
+// Portail reserve aux equipes : intervenants, superviseurs, et cadres valideurs.
 
 const cfg = require("./correspondance");
 const M = require("./modele");
+const cache = require("./cache");
+const { creerSynchro } = require("./synchro");
 const { ErreurSource } = require("../erreurs");
 
 const TERMINES = ["RESOLU", "CLOTURE"];
+const JOURS_CLOS_AFFICHES = 30; // tickets clos visibles dans les listes
 const normaliser = (s) => String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 
 function creerSource(client) {
-  // ---------- Caches (les referentiels EV changent rarement) ----------
-  const cache = new Map();
+  const synchro = creerSynchro(client, cache, {
+    intervalleMs: (Number(process.env.SYNCHRO_SECONDES) || 60) * 1000,
+    retentionJours: Number(process.env.RETENTION_JOURS) || 365,
+  });
+
+  // ---------- Caches memoire des referentiels (ils changent rarement) ----------
+  const memoire = new Map();
   async function memo(cle, ttlMs, fn) {
-    const c = cache.get(cle);
+    const c = memoire.get(cle);
     if (c && c.expire > Date.now()) return c.valeur;
     const valeur = await fn();
-    cache.set(cle, { valeur, expire: Date.now() + ttlMs });
+    memoire.set(cle, { valeur, expire: Date.now() + ttlMs });
     return valeur;
   }
   const CINQ_MIN = 5 * 60e3;
-  const statutsEV = () => memo("statuts", CINQ_MIN, async () => (await client.getStatuses()).records);
   const groupesEV = () => memo("groupes", CINQ_MIN, async () => (await client.getGroups()).records);
   const catalogueEV = () => memo("catalogue", CINQ_MIN, async () => (await client.getCatalog()).records);
   const locationsEV = () => memo("locations", CINQ_MIN, async () => (await client.getLocations()).records);
@@ -34,7 +51,7 @@ function creerSource(client) {
   async function groupesIntervention() {
     return (await groupesEV())
       .map((g) => ({ id: Number(g.GROUP_ID), nom: g.GROUP_FR || g.GROUP_EN }))
-      .filter((g) => !M.estSuperviseurGroupe(g.nom));
+      .filter((g) => !M.estGroupeTechnique(g.nom));
   }
 
   async function chargerUtilisateur(id) {
@@ -49,84 +66,47 @@ function creerSource(client) {
     return M.versUtilisateur(employe, groupes);
   }
 
-  async function contexte(rfc) {
-    let req;
+  // Lecture en direct dans EV + mise a jour du cache. Repli sur le cache si EV ne repond pas.
+  async function contexteDirect(rfc) {
     try {
-      req = await client.getRequest(rfc);
+      const lu = await synchro.relireTicket(rfc);
+      if (!lu) throw new ErreurSource(404, "Ticket introuvable");
+      return { ctx: M.analyser(lu.req, lu.actions), origine: "ev", lu_le: new Date().toISOString() };
     } catch (err) {
       if (err.status === 404) throw new ErreurSource(404, "Ticket introuvable");
-      throw err;
+      const copie = cache.lire(rfc);
+      if (!copie) throw err;
+      return { ctx: M.analyser(copie.req, copie.actions), origine: "cache", lu_le: copie.synchro, erreur_ev: err.message };
     }
-    const actions = (await client.getActions({ search: `request.rfc_number:"${rfc}"`, max_rows: 500 })).records;
-    return M.analyser(req, actions);
   }
 
   async function contexteVisible(u, rfc) {
-    const ctx = await contexte(rfc);
+    const res = await contexteDirect(rfc);
     // 404 aussi quand le ticket existe mais n'est pas visible : on ne revele pas son existence.
-    if (!M.peutVoir(u, ctx)) throw new ErreurSource(404, "Ticket introuvable");
-    return ctx;
+    if (!M.peutVoir(u, res.ctx)) throw new ErreurSource(404, "Ticket introuvable");
+    return res;
   }
 
-  const actionsEnCours = async () =>
-    (await client.getActions({ search: 'end_date_ut:"is_null"', max_rows: 2000 })).records;
-
-  async function vuesPour(u) {
+  function vuesPour(u) {
     const vues = {
-      UTILISATEUR: [
-        { code: "moi", label: "Mes demandes" },
-        { code: "action", label: "Attendent mon action" },
-      ],
       INTERVENANT: [
         { code: "groupes", label: "File de mes groupes" },
-        { code: "moi", label: "Mes tickets" },
+        { code: "moi", label: "Affectés à moi" },
         { code: "action", label: "Attendent mon action" },
       ],
       SUPERVISEUR: [
         { code: "tout", label: "Tous les tickets" },
-        { code: "moi", label: "Mes tickets" },
+        { code: "moi", label: "Affectés à moi" },
         { code: "action", label: "Attendent mon action" },
+        { code: "a_valider", label: "En attente de validation" },
+      ],
+      VALIDEUR: [
+        { code: "a_valider", label: "À valider" },
+        { code: "tout", label: "Mes validations" },
       ],
     }[u.profil];
-    let valideur = u.profil === "SUPERVISEUR";
-    if (!valideur) {
-      const miennes = await client.getActions({ search: `end_date_ut:"is_null",done_by_id:"${u.id}"`, max_rows: 200 });
-      valideur = miennes.records.some((a) => M.etapeWorkflow(a)?.nature === "VALIDATION");
-    }
-    if (valideur) vues.push({ code: "a_valider", label: "À valider" });
+    if (!vues) throw new ErreurSource(403, "Portail réservé aux équipes support et aux valideurs");
     return vues;
-  }
-
-  // Tickets candidats pour l'utilisateur, avec leurs actions en cours.
-  async function ticketsCandidats(u) {
-    const encours = await actionsEnCours();
-    let requetes;
-    if (u.profil === "SUPERVISEUR") {
-      requetes = (await client.getRequests({ max_rows: 500, sort: "submit_date_ut+desc" })).records;
-    } else {
-      const mesGroupes = new Set(u.groupes.map((g) => g.id));
-      const rfcs = new Set(
-        encours.filter((a) => mesGroupes.has(M.idGroupe(a)) || M.idAuteur(a) === u.id).map(M.rfcAction)
-      );
-      const [commeDemandeur, commeBeneficiaire] = await Promise.all([
-        client.getRequests({ search: `requestor.employee_id:"${u.id}"`, max_rows: 500 }),
-        client.getRequests({ search: `recipient.employee_id:"${u.id}"`, max_rows: 500 }),
-      ]);
-      const connues = new Map([...commeDemandeur.records, ...commeBeneficiaire.records].map((r) => [r.RFC_NUMBER, r]));
-      const manquants = [...rfcs].filter((rfc) => rfc && !connues.has(rfc));
-      if (manquants.length) {
-        // Meme champ repete = OU dans la syntaxe de recherche EV.
-        const autres = await client.getRequests({
-          search: manquants.map((rfc) => `rfc_number:"${rfc}"`).join(","),
-          max_rows: manquants.length,
-        });
-        autres.records.forEach((r) => connues.set(r.RFC_NUMBER, r));
-      }
-      requetes = [...connues.values()];
-    }
-    const parRfc = {};
-    encours.forEach((a) => (parRfc[M.rfcAction(a)] ||= []).push(a));
-    return requetes.map((req) => M.analyser(req, parRfc[req.RFC_NUMBER] || []));
   }
 
   function filtreVue(u, ctx, vue) {
@@ -136,7 +116,7 @@ function creerSource(client) {
       case "tout":
         return true;
       case "moi":
-        return r.demandeur || (p && r.assigne(p));
+        return Boolean(p) && r.assigne(p);
       case "groupes":
         return Boolean(p) && r.mesGroupes.has(M.idGroupe(p));
       case "action":
@@ -148,23 +128,83 @@ function creerSource(client) {
     }
   }
 
+  // Tickets du cache visibles par l'utilisateur, analyses.
+  function contextesVisibles(u) {
+    const depuisClos = new Date(Date.now() - JOURS_CLOS_AFFICHES * 86400e3).toISOString();
+    return cache
+      .candidats({
+        tous: u.profil === "SUPERVISEUR",
+        groupes: u.groupes.map((g) => g.id),
+        personne: u.id,
+        depuisClos,
+      })
+      .map(({ req, actions }) => M.analyser(req, actions))
+      .filter((ctx) => M.peutVoir(u, ctx));
+  }
+
+  async function ticketComplet(u, { ctx, origine, lu_le, erreur_ev }) {
+    return {
+      ...M.versTicket(ctx, u, await titresCatalogue()),
+      historique: M.historique(ctx),
+      // Si EV est injoignable, on affiche la copie mais on ne propose aucune action.
+      actions: origine === "ev" ? M.actionsPossibles(u, ctx).map(M.versActionPublique) : [],
+      progression: M.progression(ctx),
+      fraicheur: { origine, lu_le, erreur_ev: erreur_ev || null },
+    };
+  }
+
   return {
     nom: client.nom,
+
+    demarrerSynchro() {
+      synchro.demarrer();
+    },
+
+    // ---------- Synchronisation ----------
+
+    async etatSynchro() {
+      return synchro.etat();
+    },
+
+    // Rafraichissement demande par un utilisateur : on attend la synchro au plus quelques secondes.
+    async synchroniser() {
+      const encours = synchro.executer();
+      await Promise.race([encours, new Promise((r) => setTimeout(r, 15000))]);
+      return synchro.etat();
+    },
 
     // ---------- Utilisateurs ----------
 
     async listerComptesDev() {
-      // En simulation : tous les employes. Sur le vrai EV : DEV_COMPTES (e-mails separes par des virgules).
+      // En simulation : les employes ayant acces au portail. Sur le vrai EV : DEV_COMPTES (e-mails).
       const mails = (process.env.DEV_COMPTES || "").split(",").map((m) => m.trim()).filter(Boolean);
       const employes = mails.length
         ? (await client.getEmployees({ search: mails.map((m) => `e_mail:"${m}"`).join(","), max_rows: 50 })).records
-        : (await client.getEmployees({ max_rows: 30 })).records;
-      return Promise.all(employes.map((e) => this.getUtilisateur(e.EMPLOYEE_ID)));
+        : (await client.getEmployees({ max_rows: 100 })).records;
+      const utilisateurs = await Promise.all(employes.map((e) => this.getUtilisateur(e.EMPLOYEE_ID)));
+      return utilisateurs.filter((x) => x && x.profil !== "AUCUN");
     },
 
     async getUtilisateur(id) {
       if (id == null) return null;
       return memo(`utilisateur:${id}`, 60e3, () => chargerUtilisateur(id));
+    },
+
+    // Recherche d'un demandeur (saisie d'un ticket pour son compte).
+    async chercherEmployes(texte) {
+      const motif = String(texte || "").replace(/["*~]/g, "").trim();
+      if (motif.length < 2) return [];
+      const { records } = await client.getEmployees({ search: `last_name~"*${motif}*"`, max_rows: 15 });
+      return records.map((e) => {
+        const [nom, prenom = ""] = String(e.LAST_NAME).split(/,\s*/);
+        return {
+          id: Number(e.EMPLOYEE_ID),
+          nom: prenom ? `${prenom} ${nom}` : nom,
+          fonction: e.JOB_TITLE || "",
+          e_mail: e.E_MAIL,
+          site: e.LOCATION?.LOCATION_ID ? { id: Number(e.LOCATION.LOCATION_ID), nom: e.LOCATION.LOCATION_FR } : null,
+        };
+      });
     },
 
     async vues(u) {
@@ -174,7 +214,9 @@ function creerSource(client) {
     // ---------- Referentiels ----------
 
     async listerEtablissements() {
-      return (await locationsEV()).map((l) => ({ id: Number(l.LOCATION_ID), nom: l.LOCATION_FR || l.LOCATION_EN }));
+      return (await locationsEV())
+        .map((l) => ({ id: Number(l.LOCATION_ID), nom: l.LOCATION_FR || l.LOCATION_EN }))
+        .sort((a, b) => a.nom.localeCompare(b.nom, "fr"));
     },
 
     async listerGroupes() {
@@ -192,13 +234,13 @@ function creerSource(client) {
     // ---------- Tickets ----------
 
     async listerTickets(u, filtres = {}) {
-      const vues = await vuesPour(u);
+      const vues = vuesPour(u);
       const vue = filtres.vue || vues[0].code;
       if (!vues.some((v) => v.code === vue)) throw new ErreurSource(400, "Vue non disponible");
       const q = filtres.q ? normaliser(filtres.q) : null;
       const titres = await titresCatalogue();
 
-      return (await ticketsCandidats(u))
+      return contextesVisibles(u)
         .filter((ctx) => filtreVue(u, ctx, vue))
         .map((ctx) => M.versTicket(ctx, u, titres))
         .filter((t) => !filtres.etablissement || t.etablissement?.id === Number(filtres.etablissement))
@@ -209,18 +251,24 @@ function creerSource(client) {
     },
 
     async getTicket(u, rfc) {
-      const ctx = await contexteVisible(u, rfc);
-      return {
-        ...M.versTicket(ctx, u, await titresCatalogue()),
-        historique: M.historique(ctx),
-        actions: M.actionsPossibles(u, ctx).map(M.versActionPublique),
-        progression: M.progression(ctx),
-      };
+      return ticketComplet(u, await contexteVisible(u, rfc));
     },
 
+    // Saisie par le support, pour le compte d'un demandeur (appel, passage, mail...).
     async creerTicket(u, data) {
+      if (u.profil === "VALIDEUR") throw new ErreurSource(403, "La saisie de tickets est réservée aux équipes support");
       const cat = (await catalogueEV()).find((c) => String(c.SD_CATALOG_ID) === String(data.catalogue_id));
       if (!cat) throw new ErreurSource(400, "Choisissez ce qui est concerné dans le catalogue");
+
+      let demandeur;
+      try {
+        demandeur = await client.getEmployee(data.demandeur_id);
+      } catch (err) {
+        if (err.status === 404) throw new ErreurSource(400, "Choisissez le demandeur");
+        throw err;
+      }
+      if (!demandeur?.E_MAIL) throw new ErreurSource(400, "Ce demandeur n'a pas d'adresse e-mail dans EasyVista");
+
       const locations = await locationsEV();
       if (!locations.some((l) => String(l.LOCATION_ID) === String(data.etablissement_id))) {
         throw new ErreurSource(400, "Établissement inconnu");
@@ -229,8 +277,8 @@ function creerSource(client) {
       if (!titre) throw new ErreurSource(400, "Le titre est obligatoire");
 
       const demande = {
-        requestor_mail: u.e_mail,
-        recipient_mail: u.e_mail,
+        requestor_mail: demandeur.E_MAIL,
+        recipient_mail: demandeur.E_MAIL,
         location_id: Number(data.etablissement_id),
         title: titre,
         description: String(data.description || "").trim(),
@@ -249,11 +297,26 @@ function creerSource(client) {
 
       const { HREF } = await client.createRequest({ requests: [demande] });
       const rfc = String(HREF).split("/").pop();
-      return this.getTicket(u, rfc);
+
+      // Trace de la saisie : EV voit le compte de service comme createur.
+      const cree = await synchro.relireTicket(rfc);
+      const groupeId = cree ? M.analyser(cree.req, cree.actions).groupe?.id : null;
+      const [nom, prenom = ""] = String(demandeur.LAST_NAME).split(/,\s*/);
+      const origine = String(data.origine || "").trim();
+      await client.createAction(rfc, {
+        action: {
+          action_type_name: cfg.typeCommentaire,
+          group_id: groupeId || u.groupes[0]?.id,
+          done_by_id: u.id,
+          comment: `Ticket saisi par ${u.nom_complet} pour ${prenom ? `${prenom} ${nom}` : nom}${origine ? ` (${origine})` : ""}.`,
+        },
+      });
+      return ticketComplet(u, await contexteDirect(rfc));
     },
 
     async executerAction(u, rfc, { action, commentaire, groupe_id } = {}) {
-      const ctx = await contexteVisible(u, rfc);
+      const { ctx, origine } = await contexteVisible(u, rfc);
+      if (origine !== "ev") throw new ErreurSource(503, "EasyVista est injoignable : action impossible pour le moment");
       const a = M.actionsPossibles(u, ctx).find((x) => x.code === action);
       if (!a) throw new ErreurSource(403, "Cette action ne vous est pas permise à cette étape");
       const message = String(commentaire || "").trim();
@@ -303,22 +366,17 @@ function creerSource(client) {
           });
           break;
         }
-        case "ANNULER": {
-          const statut = (await statutsEV()).find((s) => (s.STATUS_FR || s.STATUS_EN) === cfg.statutAnnulation);
-          await client.updateRequest(rfc, {
-            closed: { ...(statut ? { status_guid: statut.STATUS_GUID } : {}), comment: message, done_by_id: u.id, delete_actions: 1 },
-          });
-          break;
-        }
         default:
           throw new ErreurSource(500, `Operation inconnue : ${op.type}`);
       }
 
-      // Apres un transfert, l'utilisateur peut ne plus avoir acces au ticket.
-      if (!M.peutVoir(u, await contexte(rfc))) {
+      // Relecture EV (et mise a jour du cache) ; apres un transfert, l'utilisateur
+      // peut ne plus avoir acces au ticket.
+      const apres = await contexteDirect(rfc);
+      if (!M.peutVoir(u, apres.ctx)) {
         return { id: rfc, masque: true, message: "Action enregistrée. Ce ticket ne fait plus partie de vos tickets." };
       }
-      return this.getTicket(u, rfc);
+      return ticketComplet(u, apres);
     },
 
     async stats(u, filtres = {}) {

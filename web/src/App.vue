@@ -9,6 +9,7 @@ import StatsTickets from "./components/StatsTickets.vue";
 import TableTickets from "./components/TableTickets.vue";
 import PanneauCreation from "./components/PanneauCreation.vue";
 import PanneauDetail from "./components/PanneauDetail.vue";
+import BandeauSynchro from "./components/BandeauSynchro.vue";
 
 const TITRE_PAGE = document.title;
 
@@ -171,6 +172,21 @@ async function onActionFaite({ action, resultat }) {
   }
 }
 
+// La copie locale d'EV a été mise à jour : on recharge la liste sans rien interrompre.
+function onNouvellesDonnees() {
+  rafraichir().catch(() => {});
+}
+
+// Bouton "Actualiser" du détail : relecture en direct dans EasyVista.
+async function actualiserDetail() {
+  try {
+    await ouvrirDetail(ticket.value.id, { majUrl: false });
+    toast("Ticket relu dans EasyVista.");
+  } catch (err) {
+    toast(err.message);
+  }
+}
+
 function onPopstate() {
   if (!moi.value) return;
   const id = ticketDansUrl();
@@ -205,10 +221,12 @@ function onKeydown(e) {
           <h1>{{ titreVue }}</h1>
           <p class="main-sub">{{ compteVisible }}</p>
         </div>
-        <button class="btn btn-primary" @click="ouvrirCreation">
+        <button v-if="moi.profil !== 'VALIDEUR'" class="btn btn-primary" @click="ouvrirCreation">
           <span aria-hidden="true">+</span> Nouveau ticket
         </button>
       </header>
+
+      <BandeauSynchro @nouvelles-donnees="onNouvellesDonnees" />
 
       <StatsTickets v-if="stats" :stats="stats" :profil="moi.profil" />
       <TableTickets :tickets="tickets" @ouvrir="ouvrirDepuisListe" />
@@ -219,7 +237,6 @@ function onKeydown(e) {
     <div class="overlay" @click="fermerPanneaux()"></div>
     <PanneauCreation
       v-if="panneau === 'creation'"
-      :moi="moi"
       :referentiels="referentiels"
       @fermer="fermerPanneaux()"
       @cree="onCree"
@@ -231,6 +248,7 @@ function onKeydown(e) {
       :groupes="referentiels.groupes"
       @fermer="fermerPanneaux()"
       @fait="onActionFaite"
+      @actualiser="actualiserDetail"
     />
   </template>
 

@@ -1,50 +1,122 @@
 // donnees.js — parametrage du FAUX EasyVista (clients/simule).
 //
-// Imite ce qu'une instance EV contient : employes, groupes, localisations,
-// catalogue, statuts, types d'action et workflows. Tout est fictif.
-// Le portail n'y accede jamais directement : il passe par l'API simulee,
-// exactement comme il passera par la vraie API.
+// Imite ce qu'une instance EV contient : localisations, employes, groupes,
+// catalogue, statuts, types d'action. Le portail n'y accede jamais
+// directement : il passe par l'API simulee, comme il passera par la vraie.
+//
+// Etablissements : groupe fictif de cliniques privees ("Groupe Exemple"), noms
+// et villes inventes. Dans la vraie integration, la liste vient des localisations EV.
+// Les personnes sont fictives.
 
-const LOCATIONS = Array.from({ length: 25 }, (_, i) => ({
-  LOCATION_ID: i + 1,
-  LOCATION_FR: `Etablissement ${String(i + 1).padStart(2, "0")}`,
-}));
-
-// LAST_NAME au format EV "Nom, Prenom". MANAGER_ID sert au workflow de validation.
-const EMPLOYEES = [
-  { EMPLOYEE_ID: 1, LAST_NAME: "Martin, Claire", IDENTIFICATION: "cmartin", JOB_TITLE: "Cadre de santé", LOCATION_ID: 1, MANAGER_ID: null },
-  { EMPLOYEE_ID: 2, LAST_NAME: "Roux, Julien", IDENTIFICATION: "jroux", JOB_TITLE: "Secrétaire médical", LOCATION_ID: 1, MANAGER_ID: 1 },
-  { EMPLOYEE_ID: 3, LAST_NAME: "Bernard, Sophie", IDENTIFICATION: "sbernard", JOB_TITLE: "Médecin", LOCATION_ID: 3, MANAGER_ID: null },
-  { EMPLOYEE_ID: 4, LAST_NAME: "Dubois, Marc", IDENTIFICATION: "mdubois", JOB_TITLE: "Technicien support", LOCATION_ID: 1, MANAGER_ID: 8 },
-  { EMPLOYEE_ID: 5, LAST_NAME: "Haddad, Nadia", IDENTIFICATION: "nhaddad", JOB_TITLE: "Ingénieure systèmes et réseaux", LOCATION_ID: 1, MANAGER_ID: 8 },
-  { EMPLOYEE_ID: 6, LAST_NAME: "Petit, Thomas", IDENTIFICATION: "tpetit", JOB_TITLE: "Référent applications métier", LOCATION_ID: 2, MANAGER_ID: 8 },
-  { EMPLOYEE_ID: 7, LAST_NAME: "Moreau, Léa", IDENTIFICATION: "lmoreau", JOB_TITLE: "Cheffe de projet BI", LOCATION_ID: 1, MANAGER_ID: 8 },
-  { EMPLOYEE_ID: 8, LAST_NAME: "Garnier, Isabelle", IDENTIFICATION: "igarnier", JOB_TITLE: "Responsable support IT", LOCATION_ID: 1, MANAGER_ID: null },
-].map((e) => ({ ...e, E_MAIL: `${e.IDENTIFICATION}@exemple.test` }));
-
-// Groupes EV et leurs membres. "Supervision support" ne traite pas de
-// tickets : c'est le groupe qui donne le profil superviseur dans le portail.
-const GROUPS = [
-  { GROUP_ID: 1, GROUP_FR: "Support Infra N1", MEMBERS: [4, 5] },
-  { GROUP_ID: 2, GROUP_FR: "Support Infra N2", MEMBERS: [5] },
-  { GROUP_ID: 3, GROUP_FR: "Applications métier", MEMBERS: [6] },
-  { GROUP_ID: 4, GROUP_FR: "Projets ITO", MEMBERS: [7] },
-  { GROUP_ID: 5, GROUP_FR: "BI & Data", MEMBERS: [7] },
-  { GROUP_ID: 9, GROUP_FR: "Supervision support", MEMBERS: [8] },
+const ETABLISSEMENTS = [
+  // [nom, ville, type]
+  ["Polyclinique du Parc", "Valmont", "MCO"],
+  ["Clinique des Tilleuls", "Valmont", "MCO"],
+  ["Clinique de l'Europe", "Valmont", "Médecine-Chirurgie"],
+  ["Clinique Saint-Michel", "Beaulieu", "Médecine-Chirurgie"],
+  ["Clinique du Lac", "Beaulieu", "Médecine-Chirurgie"],
+  ["Clinique Les Cèdres", "Saint-Aubin", "SMR"],
+  ["Clinique La Roseraie", "Valmont", "SMR"],
+  ["Clinique Beausoleil", "Valmont", "SMR"],
+  ["Clinique Les Pins", "Montclar", "SMR"],
+  ["Clinique Les Jardins du Val", "", "Soins de longue durée"],
+  ["Clinique Les Sources", "Belcastel", "Psychiatrie"],
+  ["Clinique La Colline", "Port-Marin", "Psychiatrie"],
+  ["Clinique Saint-Jean", "Fontaine", "Psychiatrie"],
+  ["Clinique Le Moulin", "Montclar", "Psychiatrie"],
+  ["Résidence Les Acacias", "Port-Marin", "EHPAD"],
+  ["Résidence Les Hortensias", "Valmont", "EHPAD"],
+  ["Résidence Les Magnolias", "Belcastel", "EHPAD"],
+  ["Résidence Les Charmilles", "Saint-Aubin", "EHPAD"],
+  ["Résidence La Pinède", "Fontaine", "EHPAD"],
+  ["Résidence Le Clos Fleuri", "Beaulieu", "EHPAD"],
+  ["Résidence La Bastide", "Port-Marin", "EHPAD"],
+  ["Résidence Notre-Dame des Prés", "Saint-Aubin", "EHPAD"],
+  ["Exemple Santé à Domicile", "Valmont", "HAD"],
+  ["Les Terrasses des Hortensias", "Valmont", "Résidence seniors"],
+  ["Les Terrasses des Prés", "Saint-Aubin", "Résidence seniors"],
+  ["Exemple Services", "", "Services à la personne"],
+  ["Centre Médical du Parc", "Valmont", "Centre médical"],
+  ["Centre Médical de la Gare", "Valmont", "Centre médical"],
+  ["Siège Groupe Exemple", "Valmont", "Siège"],
 ];
-const GROUPE_SUPERVISION = 9;
+
+const LOCATIONS = ETABLISSEMENTS.map(([nom, ville, type], i) => ({
+  LOCATION_ID: i + 1,
+  LOCATION_FR: nom,
+  CITY: ville,
+  LOCATION_PATH: `${type}/${nom}`,
+}));
+const L = Object.fromEntries(LOCATIONS.map((l) => [l.LOCATION_FR, l.LOCATION_ID]));
+
+// Groupes EV. Les deux derniers ne traitent pas de tickets :
+// "Supervision support" donne le profil superviseur, "Cadres valideurs" le profil valideur.
+const GROUPS = [
+  { GROUP_ID: 1, GROUP_FR: "Service Desk (N1)" },
+  { GROUP_ID: 2, GROUP_FR: "Infra systèmes & réseaux (N2)" },
+  { GROUP_ID: 3, GROUP_FR: "Téléphonie" },
+  { GROUP_ID: 4, GROUP_FR: "Applications métier" },
+  { GROUP_ID: 5, GROUP_FR: "DPI" },
+  { GROUP_ID: 6, GROUP_FR: "Projets ITO" },
+  { GROUP_ID: 7, GROUP_FR: "BI & Data" },
+  { GROUP_ID: 8, GROUP_FR: "SIRH (RH / paie)" },
+  { GROUP_ID: 9, GROUP_FR: "Sécurité SI" },
+  { GROUP_ID: 10, GROUP_FR: "Biomédical & équipements connectés" },
+  { GROUP_ID: 11, GROUP_FR: "Logistique IT (matériel)" },
+  { GROUP_ID: 90, GROUP_FR: "Supervision support" },
+  { GROUP_ID: 91, GROUP_FR: "Cadres valideurs" },
+];
+const GROUPE_SUPERVISION = 90;
+const GROUPE_VALIDEURS = 91;
+
+// Employes EV : LAST_NAME au format "Nom, Prenom". GROUPES = appartenance aux groupes EV.
+// MANAGER_ID sert au workflow de validation.
+const PERSONNES = [
+  // Equipes support
+  ["mdubois", "Dubois, Marc", "Technicien Service Desk", "Siège Groupe Exemple", [1]],
+  ["kbenali", "Benali, Karim", "Technicien Service Desk", "Siège Groupe Exemple", [1]],
+  ["nhaddad", "Haddad, Nadia", "Ingénieure systèmes et réseaux", "Siège Groupe Exemple", [2, 1]],
+  ["jlefevre", "Lefèvre, Julie", "Technicienne téléphonie", "Siège Groupe Exemple", [3]],
+  ["tpetit", "Petit, Thomas", "Référent applications métier", "Polyclinique du Parc", [4]],
+  ["cgirard", "Girard, Camille", "Référente DPI", "Clinique des Tilleuls", [5, 4]],
+  ["hlambert", "Lambert, Hugo", "Chef de projet ITO", "Siège Groupe Exemple", [6]],
+  ["lmoreau", "Moreau, Léa", "Cheffe de projet BI", "Siège Groupe Exemple", [7, 6]],
+  ["sblanc", "Blanc, Sandrine", "Chargée SIRH", "Siège Groupe Exemple", [8]],
+  ["ymercier", "Mercier, Yanis", "Responsable sécurité SI", "Siège Groupe Exemple", [9]],
+  ["pfabre", "Fabre, Paul", "Ingénieur biomédical", "Clinique de l'Europe", [10]],
+  ["evidal", "Vidal, Élodie", "Gestionnaire logistique IT", "Siège Groupe Exemple", [11]],
+  ["igarnier", "Garnier, Isabelle", "Responsable support IT", "Siège Groupe Exemple", [90]],
+  // Cadres valideurs
+  ["cmartin", "Martin, Claire", "Cadre de santé", "Polyclinique du Parc", [91]],
+  ["proche", "Roche, Philippe", "Directeur d'établissement", "Clinique Les Sources", [91]],
+  ["mleroy", "Leroy, Martine", "Directrice d'EHPAD", "Résidence Les Hortensias", [91]],
+  // Demandeurs (pas d'acces au portail)
+  ["jroux", "Roux, Julien", "Secrétaire médical", "Polyclinique du Parc", [], "cmartin"],
+  ["sbernard", "Bernard, Sophie", "Médecin", "Clinique des Tilleuls", [], null],
+  ["nfaure", "Faure, Nicolas", "Infirmier", "Clinique Les Sources", [], "proche"],
+  ["arobert", "Robert, Anne", "Assistante RH", "Résidence Les Hortensias", [], "mleroy"],
+  ["bgarcia", "Garcia, Benoît", "Kinésithérapeute", "Clinique Les Cèdres", [], null],
+];
+
+const EMPLOYEES = PERSONNES.map(([login, nom, fonction, site, groupes, manager], i) => ({
+  EMPLOYEE_ID: i + 1,
+  LAST_NAME: nom,
+  IDENTIFICATION: login,
+  E_MAIL: `${login}@exemple.test`,
+  JOB_TITLE: fonction,
+  LOCATION_ID: L[site],
+  GROUPES: groupes,
+  MANAGER_LOGIN: manager || null,
+}));
+for (const e of EMPLOYEES) {
+  e.MANAGER_ID = e.MANAGER_LOGIN ? EMPLOYEES.find((x) => x.IDENTIFICATION === e.MANAGER_LOGIN).EMPLOYEE_ID : null;
+}
+for (const g of GROUPS) g.MEMBERS = EMPLOYEES.filter((e) => e.GROUPES.includes(g.GROUP_ID)).map((e) => e.EMPLOYEE_ID);
 
 const guid = (n) => `{00000000-0000-0000-0000-${String(n).padStart(12, "0")}}`;
-const STATUSES = [
-  "Nouveau",
-  "En cours",
-  "En attente de validation",
-  "Suspendu",
-  "Résolu",
-  "Clôturé",
-  "Refusé",
-  "Annulé",
-].map((s, i) => ({ STATUS_ID: i + 1, STATUS_GUID: guid(i + 1), STATUS_FR: s }));
+const STATUSES = ["Nouveau", "En cours", "En attente de validation", "Suspendu", "Résolu", "Clôturé", "Refusé", "Annulé"].map(
+  (s, i) => ({ STATUS_ID: i + 1, STATUS_GUID: guid(i + 1), STATUS_FR: s })
+);
 const S = Object.fromEntries(STATUSES.map((s) => [s.STATUS_FR, s.STATUS_ID]));
 
 const ACTION_TYPES = [
@@ -59,33 +131,36 @@ const ACTION_TYPES = [
 ].map((n, i) => ({ ACTION_TYPE_ID: i + 1, NAME_FR: n }));
 const T = Object.fromEntries(ACTION_TYPES.map((t) => [t.NAME_FR, t.ACTION_TYPE_ID]));
 
-// Catalogue : le chemin commence par "Incidents/" ou "Demandes/".
-// GROUP_ID et VALIDATION sont le parametrage du workflow dans ce faux EV.
+// Catalogue : [id, titre, chemin, groupe, validation]. Le chemin commence par "Incidents/" ou "Demandes/".
 const CATALOG = [
   [101, "Messagerie (Outlook / MDaemon)", "Incidents/Infrastructure/Messagerie", 1],
   [102, "PC, écran ou périphérique en panne", "Incidents/Infrastructure/Poste de travail", 1],
   [103, "Imprimante", "Incidents/Infrastructure/Poste de travail", 1],
   [104, "Wifi, VPN ou réseau", "Incidents/Infrastructure/Réseau", 2],
-  [105, "Téléphone fixe ou mobile pro", "Incidents/Infrastructure/Téléphonie", 1],
+  [105, "Téléphone fixe, DECT ou mobile pro", "Incidents/Téléphonie", 3],
   [106, "Application inaccessible pour tout un service", "Incidents/Infrastructure/Serveurs", 2],
   [107, "Mot de passe ou compte bloqué", "Incidents/Infrastructure/Comptes", 1],
-  [108, "Dossier Patient Informatisé (DPI)", "Incidents/Métier/DPI", 3],
-  [109, "Logiciel bloc opératoire", "Incidents/Métier/Logiciels spécifiques", 3],
-  [110, "Logiciel pharmacie", "Incidents/Métier/Logiciels spécifiques", 3],
-  [111, "Logiciel paie / RH", "Incidents/Métier/Logiciels spécifiques", 3],
-  [112, "Données non transmises entre deux logiciels", "Incidents/Métier/Interfaces", 3],
-  [113, "Chiffres faux dans un rapport", "Incidents/BI/Qualité des données", 5],
-  [114, "Autre / je ne sais pas", "Incidents/Support/À qualifier", 1],
+  [108, "Dossier Patient Informatisé (DPI)", "Incidents/Métier/DPI", 5],
+  [109, "Logiciel bloc opératoire", "Incidents/Métier/Logiciels spécifiques", 4],
+  [110, "Logiciel pharmacie", "Incidents/Métier/Logiciels spécifiques", 4],
+  [111, "Logiciel paie / planning RH", "Incidents/SIRH", 8],
+  [112, "Données non transmises entre deux logiciels", "Incidents/Métier/Interfaces", 4],
+  [113, "Chiffres faux dans un rapport", "Incidents/BI/Qualité des données", 7],
+  [114, "Équipement biomédical connecté", "Incidents/Biomédical", 10],
+  [115, "Mail suspect, virus ou hameçonnage", "Incidents/Sécurité", 9],
+  [116, "Autre / à qualifier", "Incidents/Support/À qualifier", 1],
   [201, "Installer un logiciel standard (Office, PDF…)", "Demandes/Infrastructure/Poste de travail", 1, false],
-  [202, "Nouveau matériel (PC, écran, téléphone)", "Demandes/Infrastructure/Matériel", 1, true],
+  [202, "Nouveau matériel (PC, écran, périphérique)", "Demandes/Logistique/Matériel", 11, true],
   [203, "Créer ou supprimer un compte utilisateur", "Demandes/Infrastructure/Comptes", 1, true],
-  [204, "Accès à un logiciel métier", "Demandes/Métier/Habilitations", 3, true],
-  [205, "Paramétrage du DPI", "Demandes/Métier/DPI", 3, true],
-  [206, "Formation à un logiciel", "Demandes/Métier/Formation", 3, false],
-  [207, "Nouveau rapport ou tableau de bord", "Demandes/BI/Reporting", 5, true],
-  [208, "Extraction de données", "Demandes/BI/Données", 5, true],
-  [209, "Nouveau projet ou nouveau logiciel", "Demandes/Projets/Nouveau projet", 4, true],
-  [210, "Montée de version ou migration", "Demandes/Projets/Évolution", 4, true],
+  [204, "Accès à un logiciel métier", "Demandes/Métier/Habilitations", 4, true],
+  [205, "Paramétrage du DPI", "Demandes/Métier/DPI", 5, true],
+  [206, "Formation à un logiciel", "Demandes/Métier/Formation", 4, false],
+  [207, "Nouveau rapport ou tableau de bord", "Demandes/BI/Reporting", 7, true],
+  [208, "Extraction de données", "Demandes/BI/Données", 7, true],
+  [209, "Nouveau projet ou nouveau logiciel", "Demandes/Projets/Nouveau projet", 6, true],
+  [210, "Montée de version ou migration", "Demandes/Projets/Évolution", 6, true],
+  [211, "Arrivée ou départ d'un collaborateur", "Demandes/SIRH/Mouvements", 8, true],
+  [212, "Nouvelle ligne ou nouveau poste téléphonique", "Demandes/Téléphonie", 3, true],
 ].map(([id, titre, chemin, groupe, validation = false]) => ({
   SD_CATALOG_ID: id,
   CODE: String(id),
@@ -106,6 +181,7 @@ module.exports = {
   EMPLOYEES,
   GROUPS,
   GROUPE_SUPERVISION,
+  GROUPE_VALIDEURS,
   STATUSES,
   S,
   ACTION_TYPES,

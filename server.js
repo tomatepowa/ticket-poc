@@ -13,6 +13,7 @@ const http = require("http");
 const path = require("path");
 const source = require("./sources");
 const { creerAuth } = require("./auth");
+const { ErreurSource } = require("./sources/erreurs");
 
 const app = express();
 const serveur = http.createServer(app);
@@ -81,6 +82,29 @@ api.post(
 );
 
 api.get(
+  "/employes",
+  envelopper(async (req, res) => {
+    res.json(await source.chercherEmployes(req.query.q));
+  })
+);
+
+// Etat de la copie locale des donnees EV (date de derniere synchro, erreur eventuelle).
+api.get(
+  "/synchro",
+  envelopper(async (req, res) => {
+    res.json(await source.etatSynchro());
+  })
+);
+
+// Bouton "Rafraichir" : lance une synchro immediate.
+api.post(
+  "/synchro",
+  envelopper(async (req, res) => {
+    res.json(await source.synchroniser());
+  })
+);
+
+api.get(
   "/stats",
   envelopper(async (req, res) => {
     res.json(await source.stats(req.user, { vue: req.query.vue }));
@@ -121,6 +145,8 @@ async function demarrer() {
   serveur.listen(PORT, () => {
     console.log(`Portail tickets en ecoute sur http://localhost:${PORT}`);
     console.log(`Source : ${source.nom} | Authentification : ${auth.mode} | Front : ${front}`);
+    // Copie locale des donnees EV : premiere synchro immediate, puis a intervalle regulier.
+    source.demarrerSynchro();
     if (auth.mode === "dev") {
       console.warn("ATTENTION : connexion de developpement active (sans mot de passe). Ne pas exposer.");
     }
@@ -133,8 +159,8 @@ function gererErreurs(err, req, res, next) {
   if (err.type === "entity.parse.failed") {
     return res.status(400).json({ error: "Corps de requete JSON invalide" });
   }
-  // Erreurs metier de la source (droits, validation...) : message transmis tel quel.
-  if (err.status && err.status < 500) {
+  // Erreurs metier de la source (droits, validation, EV injoignable) : message transmis tel quel.
+  if (err instanceof ErreurSource && err.status !== 500) {
     return res.status(err.status).json({ error: err.message });
   }
   console.error(err);

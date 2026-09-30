@@ -2,13 +2,17 @@
 // Detail d'un ticket : progression, actions proposees par le serveur, historique.
 import { computed, ref } from "vue";
 import { api } from "../api.js";
-import { PRIORITE_LABEL, formatDateTime, lienTicket, toast } from "../outils.js";
+import { PRIORITE_LABEL, formatDateTime, formatHeure, lienTicket, toast } from "../outils.js";
 
 const props = defineProps({
   ticket: { type: Object, required: true },
   groupes: { type: Array, required: true },
 });
-const emit = defineEmits(["fermer", "fait"]);
+const emit = defineEmits(["fermer", "fait", "actualiser"]);
+
+// Le détail est lu en direct dans EasyVista ; si EV ne répond pas, on affiche
+// la copie locale, sans proposer d'action.
+const depuisCache = computed(() => props.ticket.fraicheur?.origine === "cache");
 
 const commentaire = ref("");
 const groupeId = ref("");
@@ -81,12 +85,20 @@ async function copierLien() {
     <div class="panel-head">
       <h2 id="detail-title" class="mono">{{ t.numero }}</h2>
       <div class="panel-head-actions">
+        <button class="btn btn-small" type="button" @click="emit('actualiser')">Actualiser</button>
         <button class="btn btn-small" type="button" @click="copierLien">Copier le lien</button>
         <button class="panel-close" aria-label="Fermer" @click="emit('fermer')">✕</button>
       </div>
     </div>
 
     <div class="panel-body">
+      <p v-if="t.fraicheur" class="fraicheur" :class="{ 'is-warn': depuisCache }">
+        <template v-if="depuisCache">
+          EasyVista ne répond pas : copie locale du {{ formatDateTime(t.fraicheur.lu_le) }}. Actions indisponibles.
+        </template>
+        <template v-else>Lu en direct dans EasyVista à {{ formatHeure(t.fraicheur.lu_le) }}</template>
+      </p>
+
       <div class="detail-head">
         <div class="detail-tags">
           <span class="pill" :class="`statut-${t.statut}`">{{ t.etape.label }}</span>
@@ -116,7 +128,7 @@ async function copierLien() {
         </p>
       </div>
 
-      <p v-if="!t.actions.length" class="done-note">Aucune action possible de votre part sur ce ticket.</p>
+      <p v-if="!t.actions.length && !depuisCache" class="done-note">Aucune action possible de votre part sur ce ticket.</p>
       <div v-else class="actions-box">
         <label class="section-label" for="action-comment">Votre action</label>
         <textarea

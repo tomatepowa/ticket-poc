@@ -5,11 +5,12 @@
 //   ["suspendre", login, heures, commentaire]
 //   ["commenter", login, heures, commentaire]
 // urgence / impact : ids EV (1 = le plus fort), voir donnees.js.
+// Le ticket est cree dans l'etablissement du demandeur.
 
 module.exports = [
   {
     catalogue: 101, titre: "Boîte mail pleine, plus de réception", demandeur: "jroux", urgence: 1, impact: 3, heures: 5,
-    description: "Je n'arrive plus à recevoir de mails depuis ce matin, message « boîte pleine ».",
+    description: "N'arrive plus à recevoir de mails depuis ce matin, message « boîte pleine ».",
     etapes: [["prendre", "mdubois", 4]],
   },
   {
@@ -21,24 +22,24 @@ module.exports = [
     catalogue: 103, titre: "Imprimante du 2e étage bloquée", demandeur: "cmartin", urgence: 3, impact: 2, heures: 26,
     description: "Bourrage papier permanent, voyant orange.",
     etapes: [
-      ["prendre", "mdubois", 24],
-      ["suspendre", "mdubois", 23, "Pouvez-vous m'indiquer le numéro inscrit sur l'étiquette de l'imprimante ?"],
+      ["prendre", "kbenali", 24],
+      ["suspendre", "kbenali", 23, "Demandé au service le numéro inscrit sur l'étiquette de l'imprimante."],
     ],
   },
   {
-    catalogue: 104, titre: "Wifi instable en salle de réunion", demandeur: "cmartin", urgence: 3, impact: 2, heures: 50,
-    description: "Coupures toutes les 10 minutes environ.",
+    catalogue: 104, titre: "Wifi instable en salle de soins", demandeur: "nfaure", urgence: 3, impact: 2, heures: 50,
+    description: "Coupures toutes les 10 minutes environ, chariots de soins déconnectés.",
     etapes: [
       ["prendre", "nhaddad", 47],
       ["suspendre", "nhaddad", 30, "Borne défectueuse, remplacement commandé chez le prestataire réseau."],
     ],
   },
   {
-    catalogue: 105, titre: "Téléphone du secrétariat sans tonalité", demandeur: "jroux", urgence: 1, impact: 3, heures: 72,
-    description: "Plus de tonalité sur le poste fixe.",
+    catalogue: 105, titre: "DECT du service sans tonalité", demandeur: "jroux", urgence: 1, impact: 3, heures: 72,
+    description: "Plus de tonalité sur le DECT de l'accueil.",
     etapes: [
-      ["prendre", "mdubois", 70],
-      ["terminer", "mdubois", 66, "Combiné remplacé, tonalité OK."],
+      ["prendre", "jlefevre", 70],
+      ["terminer", "jlefevre", 66, "Batterie remplacée, tonalité OK."],
     ],
   },
   {
@@ -48,6 +49,24 @@ module.exports = [
       ["prendre", "mdubois", 169],
       ["terminer", "mdubois", 168, "Mot de passe réinitialisé."],
       ["terminer", "sbernard", 160, "", "1"],
+    ],
+  },
+  {
+    catalogue: 114, titre: "Pousse-seringue connecté ne remonte plus les données", demandeur: "nfaure", urgence: 1, impact: 2, heures: 3,
+    description: "Service de psychiatrie adulte, chambre 12.",
+    etapes: [],
+  },
+  {
+    catalogue: 115, titre: "Mail suspect reçu par plusieurs agents", demandeur: "arobert", urgence: 1, impact: 2, heures: 1,
+    description: "Faux mail de la paie demandant de se reconnecter à un lien externe.",
+    etapes: [["prendre", "ymercier", 0.5]],
+  },
+  {
+    catalogue: 111, titre: "Planning RH : heures de nuit mal calculées", demandeur: "arobert", urgence: 3, impact: 2, heures: 30,
+    description: "Les majorations de nuit ne s'appliquent plus depuis la mise à jour.",
+    etapes: [
+      ["prendre", "sblanc", 28],
+      ["commenter", "sblanc", 27, "Ticket ouvert chez l'éditeur, référence ED-4471."],
     ],
   },
   {
@@ -61,6 +80,11 @@ module.exports = [
     etapes: [],
   },
   {
+    catalogue: 211, titre: "Arrivée d'une aide-soignante le 1er du mois", demandeur: "arobert", heures: 8,
+    description: "Création des comptes (session, DPI, planning) et badge.",
+    etapes: [],
+  },
+  {
     catalogue: 207, titre: "Tableau de bord d'occupation des lits", demandeur: "cmartin", heures: 96,
     description: "Suivi hebdomadaire par service, exportable Excel.",
     etapes: [
@@ -70,13 +94,21 @@ module.exports = [
     ],
   },
   {
-    catalogue: 209, titre: "Déploiement d'un logiciel de planning", demandeur: "sbernard", heures: 120,
+    catalogue: 209, titre: "Déploiement d'un logiciel de planning des gardes", demandeur: "sbernard", heures: 120,
     description: "Besoin d'un outil de planning des gardes pour le service.",
     etapes: [["terminer", "igarnier", 100, "Validé en comité du lundi.", "1"]],
   },
   {
-    catalogue: 204, titre: "Accès au logiciel paie", demandeur: "jroux", heures: 60,
+    catalogue: 204, titre: "Accès au logiciel de paie", demandeur: "jroux", heures: 60,
     description: "Pour consulter les plannings de paie.",
     etapes: [["terminer", "cmartin", 55, "Pas nécessaire pour ce poste, les plannings sont transmis par les RH.", "0"]],
+  },
+  {
+    catalogue: 102, titre: "Écran noir au poste de soins", demandeur: "bgarcia", urgence: 3, impact: 3, heures: 150,
+    description: "",
+    etapes: [
+      ["prendre", "kbenali", 149],
+      ["terminer", "kbenali", 148, "Câble d'alimentation débranché."],
+    ],
   },
 ];

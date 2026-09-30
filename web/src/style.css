@@ -824,3 +824,59 @@ table.tickets tr.needs-action td:first-child { box-shadow: inset 3px 0 0 var(--a
   .field-row { grid-template-columns: 1fr; }
   .detail-grid { grid-template-columns: 1fr; }
 }
+
+/* ---------- Fraîcheur des données (copie locale d'EasyVista) ---------- */
+.synchro {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: -10px 0 18px;
+  font-size: 13px;
+  color: var(--ink-soft);
+}
+.synchro-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--st-resolu); flex: none; }
+.synchro.is-warn { color: var(--st-encours); }
+.synchro.is-warn .synchro-dot { background: var(--st-encours); }
+.synchro-texte { flex: 1; min-width: 200px; }
+
+.fraicheur { margin: 0; font-size: 12.5px; color: var(--ink-faint); }
+.fraicheur.is-warn {
+  color: var(--st-encours);
+  background: var(--st-encours-bg);
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+}
+
+/* ---------- Saisie : choix du demandeur ---------- */
+.demandeur-choisi {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 11px;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  background: var(--accent-soft);
+}
+.suggestions {
+  list-style: none;
+  margin: 0;
+  padding: 4px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  max-height: 240px;
+  overflow-y: auto;
+}
+.suggestions button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: none;
+  padding: 7px 9px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.suggestions button:hover, .suggestions button:focus-visible { background: var(--hover); }

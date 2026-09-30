@@ -12,6 +12,7 @@
 const crypto = require("crypto");
 
 const MODES = ["dev", "sso"];
+const MESSAGE_RESERVE = "Portail réservé aux équipes support et aux cadres valideurs";
 const COOKIE = "portail_session";
 const DUREE_SESSION_MS = 12 * 3600e3;
 
@@ -73,6 +74,7 @@ function creerAuth(source) {
         if (mode !== "dev") return res.status(404).json({ error: "Indisponible" });
         const utilisateur = await source.getUtilisateur(req.body?.utilisateur_id);
         if (!utilisateur) return res.status(400).json({ error: "Compte inconnu" });
+        if (utilisateur.profil === "AUCUN") return res.status(403).json({ error: MESSAGE_RESERVE });
         ouvrirSession(res, utilisateur.id);
         res.json(utilisateur);
       })
@@ -91,6 +93,9 @@ function creerAuth(source) {
     const s = sessionCourante(req);
     const utilisateur = s && (await source.getUtilisateur(s.utilisateurId));
     if (!utilisateur) return res.status(401).json({ error: "Non connecte" });
+    // Portail reserve aux equipes : un employe sans groupe support / valideur est refuse,
+    // meme s'il a une session (ses groupes EV ont pu changer depuis la connexion).
+    if (utilisateur.profil === "AUCUN") return res.status(403).json({ error: MESSAGE_RESERVE });
     req.user = utilisateur;
     next();
   });

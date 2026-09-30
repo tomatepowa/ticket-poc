@@ -77,8 +77,10 @@ const refEmploye = (e) =>
   e && { HREF: `${BASE}/employees/${e.EMPLOYEE_ID}`, EMPLOYEE_ID: e.EMPLOYEE_ID, LAST_NAME: e.LAST_NAME, E_MAIL: e.E_MAIL };
 
 function formatEmploye(e) {
-  const { MANAGER_ID, ...public_ } = e;
-  return { HREF: `${BASE}/employees/${e.EMPLOYEE_ID}`, ...public_, LOCATION: location(e.LOCATION_ID) };
+  // GROUPES / MANAGER_* : parametrage interne du faux EV, non expose par l'API.
+  const { MANAGER_ID, MANAGER_LOGIN, GROUPES, ...public_ } = e;
+  const loc = location(e.LOCATION_ID);
+  return { HREF: `${BASE}/employees/${e.EMPLOYEE_ID}`, ...public_, LOCATION: loc && { LOCATION_ID: loc.LOCATION_ID, LOCATION_FR: loc.LOCATION_FR } };
 }
 
 function formatGroupe(g) {
@@ -133,16 +135,22 @@ function formatAction(a) {
   };
 }
 
-// ---------- Recherche facon EV : search=champ:"valeur",champ2:"valeur" ----------
-// Meme champ repete = OU ; champs differents = ET. Valeurs speciales is_null / is_not_null.
+// ---------- Recherche facon EV : search=champ:"valeur",champ2~"deb*" ----------
+// Meme champ repete = OU ; champs differents = ET. Operateurs : ":" egal,
+// "~" ressemble (joker *), "!~" ne ressemble pas. Valeurs speciales is_null / is_not_null.
 
 function criteres(search) {
   const parChamp = {};
-  for (const t of String(search || "").match(/[\w.]+:"[^"]*"/g) || []) {
-    const [, champ, val] = t.match(/^([\w.]+):"([^"]*)"$/);
-    (parChamp[champ.toLowerCase()] ||= []).push(val);
+  for (const [, champ, op, val] of String(search || "").matchAll(/([\w.]+)(!~|~|:)"([^"]*)"/g)) {
+    (parChamp[champ.toLowerCase()] ||= []).push({ op, val });
   }
   return Object.entries(parChamp);
+}
+
+const sansAccents = (s) => String(s).normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+function ressemble(x, motif) {
+  const re = new RegExp(`^${sansAccents(motif).split("*").map((p) => p.replace(/[.+?^${}()|[\]\\]/g, "\\$&")).join(".*")}$`);
+  return re.test(sansAccents(x));
 }
 
 function valeur(rec, chemin) {
@@ -155,12 +163,14 @@ function valeur(rec, chemin) {
 
 function correspond(rec, crit) {
   const vide = (x) => x == null || x === "";
-  return crit.every(([champ, vals]) =>
-    vals.some((v) => {
+  return crit.every(([champ, conds]) =>
+    conds.some(({ op, val }) => {
       const x = valeur(rec, champ);
-      if (v === "is_null") return vide(x);
-      if (v === "is_not_null") return !vide(x);
-      return !vide(x) && String(x).toLowerCase() === v.toLowerCase();
+      if (val === "is_null") return vide(x);
+      if (val === "is_not_null") return !vide(x);
+      if (op === "~") return !vide(x) && ressemble(x, val);
+      if (op === "!~") return vide(x) || !ressemble(x, val);
+      return !vide(x) && String(x).toLowerCase() === val.toLowerCase();
     })
   );
 }
@@ -212,9 +222,10 @@ const typeTraitement = (r) => (estIncident(r) ? D.T["Traitement incident"] : D.T
 function demarrerWorkflow(r, date) {
   const cat = catalogue(r.catalog_id);
   if (!estIncident(r) && cat.VALIDATION) {
+    // Valideur : le manager du demandeur, a defaut un membre de la supervision.
     const dem = employe(r.requestor_id);
     const valideur = dem.MANAGER_ID || D.GROUPS.find((g) => g.GROUP_ID === D.GROUPE_SUPERVISION).MEMBERS[0];
-    ajouterAction(r, D.T["Validation hiérarchique"], { group_id: D.GROUPE_SUPERVISION, done_by_id: valideur, date });
+    ajouterAction(r, D.T["Validation hiérarchique"], { group_id: D.GROUPE_VALIDEURS, done_by_id: valideur, date });
     majRequest(r, { status_id: D.S["En attente de validation"] }, date);
   } else {
     ajouterAction(r, typeTraitement(r), { group_id: cat.GROUP_ID, date });

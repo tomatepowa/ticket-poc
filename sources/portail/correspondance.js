@@ -55,9 +55,13 @@ module.exports = {
   // Type d'action EV utilise pour les commentaires ajoutes depuis le portail.
   typeCommentaire: "Commentaire",
 
-  // Groupes EV dont les membres ont le profil superviseur dans le portail
-  // (ils voient tout). Les autres groupes sont des groupes d'intervenants.
+  // Profils du portail, deduits des groupes EV. Le portail est reserve aux equipes :
+  //   SUPERVISEUR : membre d'un de ces groupes, voit et peut traiter tous les tickets
+  //   INTERVENANT : membre d'au moins un autre groupe (groupe d'intervenants)
+  //   VALIDEUR    : membre d'un groupe de valideurs (cadres), ne fait que valider / refuser
+  // Un employe sans aucun de ces groupes n'a pas acces au portail.
   groupesSuperviseurs: ["Supervision support"],
+  groupesValideurs: ["Cadres valideurs"],
 
   // Barre de progression par type de ticket : [code d'etape, libelle].
   parcours: {
