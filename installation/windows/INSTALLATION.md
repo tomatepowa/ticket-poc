@@ -99,15 +99,16 @@ Vues disponibles (schéma `bi`) :
 
 | Vue | Contenu |
 |---|---|
-| `bi.tickets` | un ticket par ligne : type, statut, étape, priorité, catalogue, établissement, groupe, intervenant, demandeur, dates, échéance, retard, durée de traitement |
-| `bi.actions` | historique : actions EV (type, groupe, auteur, début, fin, durée, décision de validation) |
+| `bi.tickets` | un ticket par ligne : type, statut, étape, priorité, catalogue, établissement, groupe, intervenant, demandeur, dates, échéance, retard, durée de traitement, description |
+| `bi.actions` | historique : actions EV (type, groupe, auteur, début, fin, durée, décision de validation, commentaire) |
 | `bi.charge_groupes` | tickets non clos par groupe et statut, dont en retard |
 | `bi.synchro` | date de la dernière synchronisation avec EasyVista |
 
-Les **descriptions et commentaires** (texte libre, qui peut contenir des
-informations patient) ne sont pas exposés au pôle BI. Le titre l'est : à valider
-avec le DPO. Périmètre : tickets ouverts et tickets clos depuis moins de
-`RETENTION_JOURS` (365 jours par défaut).
+Les **descriptions et commentaires** (texte libre) sont exposés au pôle BI :
+les utilisateurs ne saisissent pas de données de santé dans les tickets. Les
+tableaux de bord et exports qui les reprennent suivent les mêmes règles de
+diffusion que les tickets. Périmètre : tickets ouverts et tickets clos depuis
+moins de `RETENTION_JOURS` (365 jours par défaut).
 
 ## 5. HTTPS (recommandé)
 

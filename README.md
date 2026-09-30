@@ -120,8 +120,9 @@ Les sessions de connexion sont aussi en base : elles survivent à un redémarrag
 Le rôle PostgreSQL `bi_lecteur` (lecture seule, requêtes limitées à 60 s) ne
 voit que le schéma `bi`, fait de vues « contrat » aux colonnes stables :
 `bi.tickets`, `bi.actions` (historique), `bi.charge_groupes`, `bi.synchro`
-(fraîcheur). Les descriptions et commentaires, texte libre qui peut contenir des
-informations patient, n'y figurent pas. Détail et connexion Power BI :
+(fraîcheur). Les descriptions de tickets et commentaires d'actions y figurent
+(décision du 01/10/2026 : pas de données de santé saisies dans les tickets ;
+à garder sous le regard du DPO). Détail et connexion Power BI :
 [INSTALLATION.md](installation/windows/INSTALLATION.md#4-accès-du-pôle-bi).
 
 ## Formulaires (questionnaires EV)
