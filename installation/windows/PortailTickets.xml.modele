@@ -1,0 +1,53 @@
+<!--
+  Configuration du service Windows du portail tickets (WinSW).
+  A copier en "PortailTickets.xml" a cote de "PortailTickets.exe" (WinSW renomme),
+  a la racine du dossier du portail, PUIS a completer : chaque valeur A_COMPLETER.
+
+  Ce fichier contient des secrets (mot de passe de la base, jeton EasyVista) :
+  installer.ps1 restreint ses droits aux administrateurs et au compte SYSTEM.
+-->
+<service>
+  <id>PortailTickets</id>
+  <name>Portail tickets IT</name>
+  <description>Portail des équipes support : affichage simplifié d'EasyVista (copie locale PostgreSQL).</description>
+
+  <!-- Chemin de node.exe (installation Node.js LTS par defaut) -->
+  <executable>C:\Program Files\nodejs\node.exe</executable>
+  <arguments>server.js</arguments>
+  <workingdirectory>%BASE%</workingdirectory>
+
+  <!-- Demarre apres PostgreSQL (nom du service de l'installeur PostgreSQL 16 pour Windows) -->
+  <depend>postgresql-x64-16</depend>
+  <startmode>Automatic</startmode>
+  <onfailure action="restart" delay="10 sec"/>
+  <onfailure action="restart" delay="30 sec"/>
+  <resetfailure>1 hour</resetfailure>
+
+  <logpath>%BASE%\journaux</logpath>
+  <log mode="roll-by-size">
+    <sizeThreshold>10240</sizeThreshold>
+    <keepFiles>8</keepFiles>
+  </log>
+
+  <!-- ===== Parametres du portail ===== -->
+  <env name="NODE_ENV" value="production"/>
+  <env name="PORT" value="3000"/>
+
+  <!-- Base PostgreSQL : role "portail" cree par creer-base.sql -->
+  <env name="DATABASE_URL" value="postgres://portail:A_COMPLETER@localhost:5432/portail"/>
+
+  <!-- EasyVista : URL sans /api/v1, numero de compte, jeton du compte de service -->
+  <env name="SOURCE" value="easyvista"/>
+  <env name="EV_URL" value="https://A_COMPLETER.easyvista.com"/>
+  <env name="EV_ACCOUNT" value="A_COMPLETER"/>
+  <env name="EV_TOKEN" value="A_COMPLETER"/>
+
+  <!-- Synchronisation et conservation de la copie locale -->
+  <env name="SYNCHRO_SECONDES" value="60"/>
+  <env name="RETENTION_JOURS" value="365"/>
+
+  <!-- Connexion : "sso" des qu'il est branche. "dev" = SANS MOT DE PASSE, test uniquement ;
+       DEV_COMPTES limite alors les comptes proposes (e-mails separes par des virgules). -->
+  <env name="AUTH_MODE" value="dev"/>
+  <env name="DEV_COMPTES" value=""/>
+</service>

@@ -8,16 +8,26 @@ leur compte (appel, passage, mail…).
 
 **EasyVista est maître** : les tickets, les étapes de workflow, l'historique et
 les référentiels viennent d'EV. Le portail garde seulement une **copie locale
-jetable** pour afficher vite les listes, et transmet toutes les actions à EV.
+jetable** (PostgreSQL) pour afficher vite les listes, et transmet toutes les
+actions à EV. Cette copie sert aussi au **pôle BI**, qui l'interroge en lecture
+seule pour ses tableaux de bord, sans accès à la base native d'EasyVista.
+
+**Installation en production (Windows Server, sans Linux ni Docker)** :
+voir [installation/windows/INSTALLATION.md](installation/windows/INSTALLATION.md).
 
 Tant que l'API EV et l'AD ne sont pas accessibles, le portail tourne sur un
 **faux EasyVista** qui parle comme la vraie API REST, et une **connexion de
 développement**.
 
-## Lancer le POC
+## Lancer le POC (poste de développement)
+
+Il faut un PostgreSQL 16. Le plus simple : celui du `docker-compose.yml`.
 
 ```bash
+docker compose up -d base
 npm install
+# PowerShell : $env:DATABASE_URL = "postgres://portail:portail_demo@localhost:5432/portail"
+export DATABASE_URL=postgres://portail:portail_demo@localhost:5432/portail
 npm start
 ```
 
@@ -34,7 +44,8 @@ Puis ouvrir http://localhost:3000 et choisir un compte fictif :
 Les demandeurs (Julien Roux, Sophie Bernard…) existent dans EV mais n'ont pas
 accès au portail.
 
-`npm run reset-demo` remet les tickets de démonstration à zéro et vide la copie locale.
+`npm run reset-demo` remet les tickets de démonstration à zéro et vide la copie locale
+(même `DATABASE_URL` que le portail).
 
 **Liens directs** : chaque ticket a son adresse, `http://<portail>/t/<numéro EV>`
 (bouton « Copier le lien » dans le détail, ou Ctrl+clic sur le n° dans la
@@ -45,7 +56,7 @@ En local, `npm start` sert le front via Vite (rechargement à chaud des fichiers
 de `web/`). En production (`NODE_ENV=production`), le serveur sert le build :
 lancer `npm run build` avant (l'image Docker le fait).
 
-Avec Docker : `docker compose up --build` (variables dans `docker-compose.yml`).
+Démo complète sous Docker : `docker compose up --build` (portail + PostgreSQL).
 
 ## Architecture
 
@@ -57,14 +68,21 @@ sources/portail/              Logique du portail, identique en simulation et sur
   correspondance.js             comment lire VOTRE EV (statuts, types d'action, groupes, urgence/impact)
   modele.js                     profils, étape affichée, droits de chaque utilisateur, boutons proposés
   source.js                     besoins du portail -> lecture du cache ou appels REST EV
-  cache.js                      copie locale SQLite des tickets EV (data/cache-portail.db)
+  base.js                       connexion PostgreSQL (DATABASE_URL) et migrations au démarrage
+  sql/                          schéma : 001 tables du portail, 002 vues du pôle BI
+  questionnaires.js             formulaires EV : lecture, conditions, contrôle des réponses
+  cache.js                      copie locale des tickets EV + sessions (schéma PostgreSQL "portail")
   synchro.js                    alimentation du cache : par différence chaque minute, complète chaque jour
+  controle.js                   correspondance EV -> portail complète ? (après chaque synchro)
 sources/clients/http.js       Client de la vraie API REST EV (à valider sur une instance).
-sources/clients/simule/       Faux EV : mêmes routes, mêmes réponses JSON, workflows simples,
-                              établissements d'un groupe fictif de cliniques privées.
+sources/clients/simule/       Faux EV (démo, SQLite) : mêmes routes, mêmes réponses JSON,
+                              workflows simples, établissements d'un groupe fictif de cliniques privées.
+installation/windows/         Installation Windows : script, base, service WinSW, documentation.
+scripts/reset-demo.js         Remise à zéro de la démo.
 web/                          Front Vue 3 (build Vite -> dist/, config dans vite.config.mjs) :
   src/App.vue                   session, filtres, panneaux, liens directs /t/<n°>
-  src/components/               connexion, rail de filtres, fraîcheur des données, stats, liste, saisie, détail
+  src/components/               connexion, rail de filtres, fraîcheur des données, stats, liste, saisie, détail,
+                                FormulaireEV.vue (formulaire générique d'après un questionnaire EV)
   src/api.js, src/outils.js     appels /api, libellés, formats, notification
 ```
 
@@ -74,8 +92,8 @@ et la logique du portail ne changent pas.
 
 ## Copie locale et synchronisation
 
-Pour ne pas solliciter EV à chaque affichage (plusieurs centaines d'agents
-connectés), les listes, filtres et stats sont lus dans une copie locale SQLite :
+Pour ne pas solliciter EV à chaque affichage, les listes, filtres et stats sont
+lus dans une copie locale PostgreSQL (schéma `portail`) :
 
 - **Synchro par différence** toutes les `SYNCHRO_SECONDES` (60 s) : tickets triés
   par date de mise à jour jusqu'à la synchro précédente, plus comparaison des
@@ -92,9 +110,58 @@ connectés), les listes, filtres et stats sont lus dans une copie locale SQLite 
 - **EV injoignable** : la liste et le détail s'affichent depuis la copie, avec
   un avertissement ; aucune action n'est proposée tant qu'EV ne répond pas.
 
-Supprimer `data/cache-portail.db` est sans risque : la synchro le reconstruit.
-Le fichier contient des descriptions de tickets : il suit les mêmes règles de
-sécurité que le serveur (accès, sauvegardes, chiffrement, HDS).
+Vider les tables du schéma `portail` est sans risque : la synchro les
+reconstruit. Elles contiennent des descriptions de tickets : la base suit les
+mêmes règles de sécurité que le serveur (accès, sauvegardes, chiffrement, HDS).
+Les sessions de connexion sont aussi en base : elles survivent à un redémarrage.
+
+## Pôle BI
+
+Le rôle PostgreSQL `bi_lecteur` (lecture seule, requêtes limitées à 60 s) ne
+voit que le schéma `bi`, fait de vues « contrat » aux colonnes stables :
+`bi.tickets`, `bi.actions` (historique), `bi.charge_groupes`, `bi.synchro`
+(fraîcheur). Les descriptions et commentaires, texte libre qui peut contenir des
+informations patient, n'y figurent pas. Détail et connexion Power BI :
+[INSTALLATION.md](installation/windows/INSTALLATION.md#4-accès-du-pôle-bi).
+
+## Formulaires (questionnaires EV)
+
+Aucun formulaire n'est codé dans le portail : un seul composant générique
+(`FormulaireEV.vue`) affiche n'importe quel questionnaire défini dans EV.
+Types gérés : texte, texte long, nombre, date, liste, choix multiples, oui/non ;
+questions obligatoires et conditionnelles (affichées selon une autre réponse).
+Un formulaire créé ou modifié dans EV apparaît tel quel.
+
+- **À la saisie** : si l'entrée de catalogue a un questionnaire, il s'affiche.
+  Les réponses sont contrôlées par le serveur, puis le ticket est créé **sans
+  workflow**, les réponses enregistrées, et **seulement ensuite** le workflow
+  démarré (EV 2026.1+, `creationSansWorkflow`). Indispensable quand une étape
+  dépend d'une réponse — démo : une demande de matériel passe en validation
+  au-delà de 500 €.
+- **À la fin d'une étape** : si EV demande un formulaire pour terminer l'action
+  en cours (démo : « Livraison du matériel »), il s'affiche avant la validation.
+- **Dans le détail** : les réponses enregistrées sont affichées.
+
+## Référentiels toujours à jour
+
+- Établissements, catalogue, groupes et employés sont **lus dans EV** (cache
+  mémoire de 5 min, employés en direct) : rien à maintenir dans le portail.
+  Seul le faux EV a des listes en dur.
+- **Éléments désactivés** (EV archive plutôt que supprimer) : un établissement
+  ou une entrée de catalogue dont la date de fin est passée, un employé parti,
+  sont masqués ; un employé parti perd son accès au portail. Champs réglés dans
+  `correspondance.js` (`champsFin`, à vérifier sur la vraie instance).
+- **Correspondance par identifiant** : dans `correspondance.js`, statuts,
+  types d'action et groupes peuvent être référencés par leur identifiant EV
+  (GUID, ID) plutôt que leur libellé : un renommage dans EV ne casse rien.
+- **Contrôle de correspondance** après chaque synchro : tout statut ou type
+  d'action rencontré mais inconnu, ou groupe de profil disparu d'EV, est
+  journalisé et affiché aux superviseurs (« Correspondance EasyVista à
+  compléter »). Démo : l'action « Intervention sur site ».
+
+L'API EV ne permet pas de supprimer localisations, catalogue, employés ni
+tickets (seulement les groupes et quelques liens) : c'est voulu, ces
+référentiels s'administrent dans EV, pas dans le portail.
 
 ## Comment le portail lit EasyVista
 
@@ -123,6 +190,10 @@ D'après la [documentation de l'API REST](https://docs.easyvista.com/docs/webser
 | Ajouter un commentaire | `POST /requests/{rfc}/actions` (type « Commentaire ») |
 | Saisir un ticket | `POST /requests` (catalogue, demandeur, urgence, impact) + commentaire de saisie |
 | Chercher un demandeur | `GET /employees?search=last_name~"*…*"` |
+| Formulaire d'une entrée de catalogue | `GET /questionnaires/{id}` + `GET /questions-questionnaire/{id}` |
+| Saisie avec formulaire | `POST /requests/without-workflow`, `POST /questions-result/{request_id}/{question_id}`, `PUT /requests/{rfc}/workflowstart` |
+| Formulaire de fin d'étape | `GET /requests/{rfc}/actions/{action_id}/questionnaire`, puis réponses et fin d'action |
+| Réponses d'un ticket | `GET /questions-result/{request_id}` |
 | Synchronisation | `GET /requests?sort=last_update+desc&max_rows&offset`, `GET /actions` |
 
 ### À vérifier sur une vraie instance
@@ -135,12 +206,17 @@ Signalé par `A VERIFIER` dans `sources/clients/http.js` et `sources/portail/syn
 - le tri par `last_update` / `start_date_ut` et la pagination par `offset` (EV 2024.3+) ;
 - les droits du compte de service : la doc indique que seuls les membres du
   groupe d'une action peuvent la terminer ;
-- une éventuelle limite du nombre d'appels à l'API.
+- une éventuelle limite du nombre d'appels à l'API ;
+- questionnaires : champ du catalogue qui donne le questionnaire, format des
+  questions (type, obligatoire, choix, condition), format des réponses (choix
+  multiples), usage de `without-workflow` / `workflowstart` hors agent virtuel ;
+- champs de fin de validité (localisation, catalogue) et de départ (employé).
 
 ## Variables d'environnement
 
 | Variable | Valeurs | Défaut |
 |---|---|---|
+| `DATABASE_URL` | `postgres://utilisateur:motdepasse@serveur:5432/base` | **obligatoire** |
 | `SOURCE` | `simulation`, `easyvista` | `simulation` |
 | `EV_URL`, `EV_ACCOUNT`, `EV_TOKEN` | accès à l'API EV | requis si `SOURCE=easyvista` |
 | `SYNCHRO_SECONDES` | intervalle de la synchro par différence | `60` |

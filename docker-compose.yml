@@ -1,14 +1,42 @@
+# Demo / developpement uniquement. L'installation cible est Windows natif :
+# voir installation/windows/INSTALLATION.md.
 services:
+  base:
+    image: postgres:16
+    container_name: portail-tickets-base
+    environment:
+      POSTGRES_USER: portail
+      POSTGRES_PASSWORD: portail_demo   # mot de passe de demo, a ne pas reutiliser
+      POSTGRES_DB: portail
+    volumes:
+      - base-portail:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "portail"]
+      interval: 5s
+      retries: 10
+    restart: unless-stopped
+
   tickets-poc:
     build: .
     container_name: portail-tickets-poc
+    depends_on:
+      base:
+        condition: service_healthy
     ports:
       - "3000:3000"
     environment:
+      DATABASE_URL: postgres://portail:portail_demo@base:5432/portail
       # EasyVista simule tant que l'API n'est pas accessible
       SOURCE: simulation
       # Connexion de developpement sans mot de passe : poste ou reseau de test UNIQUEMENT
       AUTH_MODE: dev
     volumes:
-      - ./data:/app/data
+      # Volume nomme (pas un dossier de l'hote : SQLite du faux EV y est fiable)
+      - ev-simule:/app/data
     restart: unless-stopped
+
+volumes:
+  base-portail:
+  ev-simule:

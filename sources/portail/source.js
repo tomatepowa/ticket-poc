@@ -16,6 +16,7 @@
 
 const cfg = require("./correspondance");
 const M = require("./modele");
+const Q = require("./questionnaires");
 const cache = require("./cache");
 const { creerSynchro } = require("./synchro");
 const { ErreurSource } = require("../erreurs");
@@ -28,6 +29,7 @@ function creerSource(client) {
   const synchro = creerSynchro(client, cache, {
     intervalleMs: (Number(process.env.SYNCHRO_SECONDES) || 60) * 1000,
     retentionJours: Number(process.env.RETENTION_JOURS) || 365,
+    titresCatalogue: () => titresCatalogue(),
   });
 
   // ---------- Caches memoire des referentiels (ils changent rarement) ----------
@@ -44,6 +46,35 @@ function creerSource(client) {
   const catalogueEV = () => memo("catalogue", CINQ_MIN, async () => (await client.getCatalog()).records);
   const locationsEV = () => memo("locations", CINQ_MIN, async () => (await client.getLocations()).records);
 
+  // Referentiels sans les elements desactives dans EV (date de fin passee).
+  const actifs = (liste, champ) => liste.filter((x) => !M.estInactif(x, champ));
+
+  async function questionnaire(id) {
+    return memo(`questionnaire:${id}`, CINQ_MIN, async () => Q.lireQuestionnaire(await client.getQuestionnaire(id)));
+  }
+
+  // Questionnaire associe a une entree de catalogue EV, ou null.
+  async function questionnaireDuCatalogue(catalogueId) {
+    const cat = (await catalogueEV()).find((c) => String(c.SD_CATALOG_ID) === String(catalogueId));
+    const id = cat?.[cfg.champQuestionnaireCatalogue];
+    return id ? questionnaire(id) : null;
+  }
+
+  // Questionnaire demande a la fin de l'action en cours, ou null (EV 2023.4+).
+  async function questionnaireAction(ctx, actionId) {
+    if (!client.getActionQuestionnaire) return null;
+    const a = ctx.actions.find((x) => String(x.ACTION_ID) === String(actionId));
+    const brut = await client.getActionQuestionnaire(ctx.req.RFC_NUMBER, actionId, a && M.idTypeAction(a));
+    return brut ? Q.lireQuestionnaire(brut) : null;
+  }
+
+  // Enregistre des reponses deja controlees sur le ticket (POST /questions-result/...).
+  async function enregistrerReponses(requestId, reponses) {
+    for (const [questionId, valeur] of Object.entries(reponses)) {
+      await client.createQuestionResult(requestId, questionId, { value: Q.versValeurEV(valeur) });
+    }
+  }
+
   async function titresCatalogue() {
     return new Map((await catalogueEV()).map((c) => [String(c.SD_CATALOG_ID), c.TITLE_FR || c.TITLE_EN]));
   }
@@ -51,7 +82,7 @@ function creerSource(client) {
   async function groupesIntervention() {
     return (await groupesEV())
       .map((g) => ({ id: Number(g.GROUP_ID), nom: g.GROUP_FR || g.GROUP_EN }))
-      .filter((g) => !M.estGroupeTechnique(g.nom));
+      .filter((g) => !M.estGroupeTechnique(g));
   }
 
   async function chargerUtilisateur(id) {
@@ -74,7 +105,7 @@ function creerSource(client) {
       return { ctx: M.analyser(lu.req, lu.actions), origine: "ev", lu_le: new Date().toISOString() };
     } catch (err) {
       if (err.status === 404) throw new ErreurSource(404, "Ticket introuvable");
-      const copie = cache.lire(rfc);
+      const copie = await cache.lire(rfc);
       if (!copie) throw err;
       return { ctx: M.analyser(copie.req, copie.actions), origine: "cache", lu_le: copie.synchro, erreur_ev: err.message };
     }
@@ -91,11 +122,13 @@ function creerSource(client) {
     const vues = {
       INTERVENANT: [
         { code: "groupes", label: "File de mes groupes" },
+        { code: "non_affectes", label: "Non affectés de mes groupes" },
         { code: "moi", label: "Affectés à moi" },
         { code: "action", label: "Attendent mon action" },
       ],
       SUPERVISEUR: [
         { code: "tout", label: "Tous les tickets" },
+        { code: "non_affectes", label: "Non affectés" },
         { code: "moi", label: "Affectés à moi" },
         { code: "action", label: "Attendent mon action" },
         { code: "a_valider", label: "En attente de validation" },
@@ -119,6 +152,13 @@ function creerSource(client) {
         return Boolean(p) && r.assigne(p);
       case "groupes":
         return Boolean(p) && r.mesGroupes.has(M.idGroupe(p));
+      case "non_affectes":
+        // Traitement en attente de prise en charge, dans mes groupes (tous pour un superviseur).
+        return (
+          ctx.tc?.nature === "TRAITEMENT" &&
+          !M.idAuteur(p) &&
+          (r.superviseur || r.mesGroupes.has(M.idGroupe(p)))
+        );
       case "action":
         return M.attendMonAction(u, ctx);
       case "a_valider":
@@ -128,26 +168,61 @@ function creerSource(client) {
     }
   }
 
+  // Filtres du rail (recherche, etablissements, groupe, statut) appliques a des
+  // tickets deja mis en forme. ignorerEtablissements : pour les compteurs par
+  // etablissement, qui doivent rester comparables quelle que soit la selection.
+  function filtrerTickets(tickets, filtres, { ignorerEtablissements = false } = {}) {
+    const q = filtres.q ? normaliser(filtres.q) : null;
+    const etablissements = ignorerEtablissements
+      ? []
+      : String(filtres.etablissement || "")
+          .split(",")
+          .map(Number)
+          .filter((n) => Number.isInteger(n) && n > 0);
+    return tickets
+      .filter((t) => !etablissements.length || etablissements.includes(t.etablissement?.id))
+      .filter((t) => !filtres.groupe || t.groupe?.id === Number(filtres.groupe))
+      .filter((t) => !filtres.statut || t.statut === filtres.statut)
+      .filter((t) => !q || normaliser(`${t.numero} ${t.titre} ${t.demandeur?.nom}`).includes(q));
+  }
+
   // Tickets du cache visibles par l'utilisateur, analyses.
-  function contextesVisibles(u) {
+  async function contextesVisibles(u) {
     const depuisClos = new Date(Date.now() - JOURS_CLOS_AFFICHES * 86400e3).toISOString();
-    return cache
-      .candidats({
-        tous: u.profil === "SUPERVISEUR",
-        groupes: u.groupes.map((g) => g.id),
-        personne: u.id,
-        depuisClos,
-      })
-      .map(({ req, actions }) => M.analyser(req, actions))
-      .filter((ctx) => M.peutVoir(u, ctx));
+    const candidats = await cache.candidats({
+      tous: u.profil === "SUPERVISEUR",
+      groupes: u.groupes.map((g) => g.id),
+      personne: u.id,
+      depuisClos,
+    });
+    return candidats.map(({ req, actions }) => M.analyser(req, actions)).filter((ctx) => M.peutVoir(u, ctx));
   }
 
   async function ticketComplet(u, { ctx, origine, lu_le, erreur_ev }) {
+    let actions = [];
+    let formulaire = null;
+    // Si EV est injoignable, on affiche la copie mais on ne propose aucune action.
+    if (origine === "ev") {
+      actions = await Promise.all(
+        M.actionsPossibles(u, ctx).map(async (a) => ({
+          ...M.versActionPublique(a),
+          // Formulaire EV a remplir pour terminer cette etape
+          questionnaire: a.op.type === "TERMINER" ? await questionnaireAction(ctx, a.op.action_id) : null,
+        }))
+      );
+      if (client.getQuestionResults) {
+        const resultats = (await client.getQuestionResults(ctx.req.REQUEST_ID)).records;
+        if (resultats.length) {
+          const q = await questionnaireDuCatalogue(ctx.req.SD_CATALOG_ID);
+          formulaire = { titre: q?.titre || "Formulaire", reponses: Q.reponsesLisibles(q, resultats) };
+        }
+      }
+    }
     return {
       ...M.versTicket(ctx, u, await titresCatalogue()),
+      formulaire,
       historique: M.historique(ctx),
-      // Si EV est injoignable, on affiche la copie mais on ne propose aucune action.
-      actions: origine === "ev" ? M.actionsPossibles(u, ctx).map(M.versActionPublique) : [],
+      actions,
       progression: M.progression(ctx),
       fraicheur: { origine, lu_le, erreur_ev: erreur_ev || null },
     };
@@ -156,9 +231,17 @@ function creerSource(client) {
   return {
     nom: client.nom,
 
+    // Schema de la base (migrations) : a attendre avant de servir des requetes.
+    async initialiser() {
+      await cache.initialiser();
+    },
+
     demarrerSynchro() {
       synchro.demarrer();
     },
+
+    // Sessions de connexion, stockees en base (utilisees par auth.js).
+    sessions: cache.sessions,
 
     // ---------- Synchronisation ----------
 
@@ -195,7 +278,7 @@ function creerSource(client) {
       const motif = String(texte || "").replace(/["*~]/g, "").trim();
       if (motif.length < 2) return [];
       const { records } = await client.getEmployees({ search: `last_name~"*${motif}*"`, max_rows: 15 });
-      return records.map((e) => {
+      return actifs(records, cfg.champsFin.employe).map((e) => {
         const [nom, prenom = ""] = String(e.LAST_NAME).split(/,\s*/);
         return {
           id: Number(e.EMPLOYEE_ID),
@@ -214,7 +297,7 @@ function creerSource(client) {
     // ---------- Referentiels ----------
 
     async listerEtablissements() {
-      return (await locationsEV())
+      return actifs(await locationsEV(), cfg.champsFin.etablissement)
         .map((l) => ({ id: Number(l.LOCATION_ID), nom: l.LOCATION_FR || l.LOCATION_EN }))
         .sort((a, b) => a.nom.localeCompare(b.nom, "fr"));
     },
@@ -224,11 +307,21 @@ function creerSource(client) {
     },
 
     async listerCatalogue() {
-      return (await catalogueEV()).map((c) => ({
+      return actifs(await catalogueEV(), cfg.champsFin.catalogue).map((c) => ({
         id: Number(c.SD_CATALOG_ID),
         type: M.typeDepuisChemin(c.CATALOG_REQUEST_PATH),
         ...M.lireCatalogue(c.CATALOG_REQUEST_PATH, c.TITLE_FR || c.TITLE_EN),
+        questionnaire_id: c[cfg.champQuestionnaireCatalogue] ? Number(c[cfg.champQuestionnaireCatalogue]) : null,
       }));
+    },
+
+    async getQuestionnaire(u, id) {
+      try {
+        return await questionnaire(id);
+      } catch (err) {
+        if (err.status === 404) throw new ErreurSource(404, "Formulaire introuvable");
+        throw err;
+      }
     },
 
     // ---------- Tickets ----------
@@ -237,17 +330,12 @@ function creerSource(client) {
       const vues = vuesPour(u);
       const vue = filtres.vue || vues[0].code;
       if (!vues.some((v) => v.code === vue)) throw new ErreurSource(400, "Vue non disponible");
-      const q = filtres.q ? normaliser(filtres.q) : null;
       const titres = await titresCatalogue();
 
-      return contextesVisibles(u)
+      const tickets = (await contextesVisibles(u))
         .filter((ctx) => filtreVue(u, ctx, vue))
-        .map((ctx) => M.versTicket(ctx, u, titres))
-        .filter((t) => !filtres.etablissement || t.etablissement?.id === Number(filtres.etablissement))
-        .filter((t) => !filtres.groupe || t.groupe?.id === Number(filtres.groupe))
-        .filter((t) => !filtres.statut || t.statut === filtres.statut)
-        .filter((t) => !q || normaliser(`${t.numero} ${t.titre} ${t.demandeur?.nom}`).includes(q))
-        .sort((a, b) => String(b.date_creation).localeCompare(String(a.date_creation)));
+        .map((ctx) => M.versTicket(ctx, u, titres));
+      return filtrerTickets(tickets, filtres).sort((a, b) => String(b.date_creation).localeCompare(String(a.date_creation)));
     },
 
     async getTicket(u, rfc) {
@@ -258,7 +346,9 @@ function creerSource(client) {
     async creerTicket(u, data) {
       if (u.profil === "VALIDEUR") throw new ErreurSource(403, "La saisie de tickets est réservée aux équipes support");
       const cat = (await catalogueEV()).find((c) => String(c.SD_CATALOG_ID) === String(data.catalogue_id));
-      if (!cat) throw new ErreurSource(400, "Choisissez ce qui est concerné dans le catalogue");
+      if (!cat || M.estInactif(cat, cfg.champsFin.catalogue)) {
+        throw new ErreurSource(400, "Choisissez ce qui est concerné dans le catalogue");
+      }
 
       let demandeur;
       try {
@@ -268,9 +358,10 @@ function creerSource(client) {
         throw err;
       }
       if (!demandeur?.E_MAIL) throw new ErreurSource(400, "Ce demandeur n'a pas d'adresse e-mail dans EasyVista");
+      if (M.estInactif(demandeur, cfg.champsFin.employe)) throw new ErreurSource(400, "Ce demandeur a quitté l'établissement");
 
       const locations = await locationsEV();
-      if (!locations.some((l) => String(l.LOCATION_ID) === String(data.etablissement_id))) {
+      if (!actifs(locations, cfg.champsFin.etablissement).some((l) => String(l.LOCATION_ID) === String(data.etablissement_id))) {
         throw new ErreurSource(400, "Établissement inconnu");
       }
       const titre = String(data.titre || "").trim();
@@ -295,8 +386,22 @@ function creerSource(client) {
         demande.severity_id = cfg.impactEV[impact];
       }
 
-      const { HREF } = await client.createRequest({ requests: [demande] });
+      // Formulaire du catalogue : reponses controlees AVANT toute creation.
+      const formulaire = await questionnaireDuCatalogue(cat.SD_CATALOG_ID);
+      const reponses = formulaire ? Q.validerReponses(formulaire, data.reponses) : {};
+
+      // Avec formulaire : creation sans workflow, reponses, puis demarrage du
+      // workflow (EV 2026.1+), pour qu'une etape qui depend d'une reponse la voie.
+      const sansWorkflow = Boolean(formulaire) && cfg.creationSansWorkflow && Boolean(client.createRequestWithoutWorkflow);
+      const { HREF } = sansWorkflow
+        ? await client.createRequestWithoutWorkflow({ requests: [demande] })
+        : await client.createRequest({ requests: [demande] });
       const rfc = String(HREF).split("/").pop();
+      if (formulaire) {
+        const { REQUEST_ID } = await client.getRequest(rfc);
+        await enregistrerReponses(REQUEST_ID, reponses);
+        if (sansWorkflow) await client.startWorkflow(rfc);
+      }
 
       // Trace de la saisie : EV voit le compte de service comme createur.
       const cree = await synchro.relireTicket(rfc);
@@ -314,7 +419,7 @@ function creerSource(client) {
       return ticketComplet(u, await contexteDirect(rfc));
     },
 
-    async executerAction(u, rfc, { action, commentaire, groupe_id } = {}) {
+    async executerAction(u, rfc, { action, commentaire, groupe_id, reponses } = {}) {
       const { ctx, origine } = await contexteVisible(u, rfc);
       if (origine !== "ev") throw new ErreurSource(503, "EasyVista est injoignable : action impossible pour le moment");
       const a = M.actionsPossibles(u, ctx).find((x) => x.code === action);
@@ -327,7 +432,10 @@ function creerSource(client) {
         case "AFFECTER":
           await client.updateAction(op.action_id, { done_by_id: u.id });
           break;
-        case "TERMINER":
+        case "TERMINER": {
+          // Formulaire de fin d'etape : reponses controlees et enregistrees avant de terminer.
+          const formulaire = await questionnaireAction(ctx, op.action_id);
+          if (formulaire) await enregistrerReponses(ctx.req.REQUEST_ID, Q.validerReponses(formulaire, reponses));
           await client.endAction(rfc, {
             end_action: {
               action_id: op.action_id,
@@ -337,6 +445,7 @@ function creerSource(client) {
             },
           });
           break;
+        }
         case "SUSPENDRE":
           await client.updateRequest(rfc, { suspended: { comment: message, done_by_id: u.id } });
           break;
@@ -379,8 +488,27 @@ function creerSource(client) {
       return ticketComplet(u, apres);
     },
 
+    // Stats de la liste affichee : memes vue et filtres que la liste.
     async stats(u, filtres = {}) {
-      const tickets = await this.listerTickets(u, { vue: filtres.vue });
+      const titres = await titresCatalogue();
+      const mesGroupes = new Set(u.groupes.map((g) => g.id));
+
+      // Compteurs par etablissement (a moi / de mes groupes) : tous les tickets
+      // visibles, filtres par recherche / groupe / statut mais PAS par la vue ni
+      // par la selection d'etablissements (sinon les non-coches tomberaient a 0).
+      // Sans filtre de statut : seulement les tickets en cours.
+      const tous = (await contextesVisibles(u)).map((ctx) => M.versTicket(ctx, u, titres));
+      const parEtablissement = new Map();
+      for (const t of filtrerTickets(tous, filtres, { ignorerEtablissements: true })) {
+        if (!filtres.statut && TERMINES.includes(t.statut)) continue;
+        if (!t.etablissement) continue;
+        const e = parEtablissement.get(t.etablissement.id) || { id: t.etablissement.id, moi: 0, groupes: 0 };
+        if (t.affectation === "MOI") e.moi++;
+        if (u.profil === "SUPERVISEUR" || (t.groupe && mesGroupes.has(t.groupe.id))) e.groupes++;
+        parEtablissement.set(e.id, e);
+      }
+
+      const tickets = await this.listerTickets(u, filtres);
       const ouverts = tickets.filter((t) => !TERMINES.includes(t.statut));
       const parStatut = {};
       tickets.forEach((t) => (parStatut[t.statut] = (parStatut[t.statut] || 0) + 1));
@@ -389,6 +517,7 @@ function creerSource(client) {
         parStatut,
         en_retard: tickets.filter((t) => t.en_retard).length,
         attendent_mon_action: tickets.filter((t) => t.attend_mon_action).length,
+        parEtablissement: [...parEtablissement.values()],
         parGroupe: (await groupesIntervention()).map((g) => ({
           groupe: g,
           n: ouverts.filter((t) => t.groupe?.id === g.id).length,

@@ -32,7 +32,15 @@ const { creerSource } = require("./portail/source");
 const nom = process.env.SOURCE || "simulation";
 
 let client;
-if (nom === "simulation") client = require("./clients/simule");
+if (nom === "simulation") {
+  // better-sqlite3 (dependance optionnelle) ne sert qu'au faux EV de demonstration.
+  try {
+    require.resolve("better-sqlite3");
+  } catch {
+    throw new Error("SOURCE=simulation demande le module better-sqlite3 (npm install). En production : SOURCE=easyvista.");
+  }
+  client = require("./clients/simule");
+}
 else if (nom === "easyvista") client = require("./clients/http");
 else throw new Error(`SOURCE inconnue : ${nom} (attendu : simulation ou easyvista)`);
 

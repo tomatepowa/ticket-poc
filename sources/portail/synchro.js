@@ -1,4 +1,4 @@
-// synchro.js — alimente le cache local a partir d'EasyVista.
+// synchro.js — alimente le cache local (PostgreSQL) a partir d'EasyVista.
 //
 //  - Synchro INCREMENTALE (toutes les SYNCHRO_SECONDES, 60 s par defaut) :
 //      1. tickets tries par date de mise a jour decroissante, page par page,
@@ -10,22 +10,56 @@
 //    les tickets et toutes les actions par pages, supprime ce qui a disparu d'EV,
 //    purge les tickets clos au-dela de la retention.
 //
+// Chaque ticket enregistre recoit ses colonnes "a plat" (statut, etape, groupe,
+// dates...) calculees par le portail : elles servent aux listes et au pole BI.
+//
 // Uniquement des routes documentees (tri + max_rows + offset, EV 2024.3+ pour
 // l'offset). A VERIFIER sur la vraie instance : les noms de champs de tri
 // "last_update" et "start_date_ut".
 
 const M = require("./modele");
+const { verifierCorrespondance } = require("./controle");
 
 const PAGE = 100;
 const PAGE_ACTIONS = 1000;
 const MARGE_MS = 2 * 60e3; // recouvrement entre deux synchros (horloges, transactions en cours)
 const MAX_PAGES_INCREMENTALE = 50;
+// Utilisateur "neutre" pour calculer les colonnes d'un ticket hors de tout droit.
+const PERSONNE = { id: -1, profil: "AUCUN", groupes: [] };
 
-function creerSynchro(client, cache, { intervalleMs = 60e3, retentionJours = 365 } = {}) {
+// titresCatalogue : () => Promise<Map id -> titre> (pour decouper le chemin du catalogue)
+function creerSynchro(client, cache, { intervalleMs = 60e3, retentionJours = 365, titresCatalogue } = {}) {
   let enCours = null;
   let minuterie = null;
 
-  const estFerme = (req, actions) => M.analyser(req, actions).statut === "CLOTURE";
+  // Colonnes a plat d'un ticket (portail.tickets), d'apres l'interpretation du portail.
+  async function resumer(req, actions) {
+    const ctx = M.analyser(req, actions);
+    const t = M.versTicket(ctx, PERSONNE, titresCatalogue ? await titresCatalogue() : new Map());
+    return {
+      type: t.type,
+      titre: t.titre,
+      statut: t.statut,
+      statut_ev: t.statut_ev,
+      etape: t.etape.label,
+      priorite: t.priorite,
+      catalogue: t.catalogue.libelle,
+      catalogue_chemin: t.catalogue.chemin,
+      etablissement: t.etablissement,
+      groupe: t.groupe,
+      intervenant: t.intervenant,
+      demandeur: t.demandeur,
+      valideur: t.valideur,
+      date_creation: t.date_creation,
+      date_maj: t.date_maj,
+      echeance: t.echeance,
+      ferme: t.statut === "CLOTURE",
+    };
+  }
+
+  async function enregistrer(req, actions) {
+    await cache.enregistrer(req, actions, await resumer(req, actions));
+  }
 
   async function relireTicket(rfc) {
     let req;
@@ -33,13 +67,13 @@ function creerSynchro(client, cache, { intervalleMs = 60e3, retentionJours = 365
       req = await client.getRequest(rfc);
     } catch (err) {
       if (err.status === 404) {
-        cache.supprimer(rfc);
+        await cache.supprimer(rfc);
         return null;
       }
       throw err;
     }
     const actions = (await client.getActions({ search: `request.rfc_number:"${rfc}"`, max_rows: 500 })).records;
-    cache.enregistrer(req, actions, estFerme(req, actions));
+    await enregistrer(req, actions);
     return { req, actions };
   }
 
@@ -52,9 +86,9 @@ function creerSynchro(client, cache, { intervalleMs = 60e3, retentionJours = 365
   }
 
   async function incrementale() {
-    const derniere = cache.lireEtat("derniere_synchro");
+    const derniere = await cache.lireEtat("derniere_synchro");
     const seuil = derniere ? new Date(new Date(derniere).getTime() - MARGE_MS).toISOString() : null;
-    const versions = cache.versions();
+    const versions = await cache.versions();
     const aRelire = new Set();
 
     for (let page = 0; page < MAX_PAGES_INCREMENTALE; page++) {
@@ -77,7 +111,7 @@ function creerSynchro(client, cache, { intervalleMs = 60e3, retentionJours = 365
       if (!encoursEV.has(rfc)) encoursEV.set(rfc, new Set());
       encoursEV.get(rfc).add(String(a.ACTION_ID));
     }
-    const encoursCache = cache.actionsEnCours();
+    const encoursCache = await cache.actionsEnCours();
     const memes = (x = new Set(), y = new Set()) => x.size === y.size && [...x].every((v) => y.has(v));
     for (const rfc of new Set([...encoursEV.keys(), ...encoursCache.keys()])) {
       if (!memes(encoursEV.get(rfc), encoursCache.get(rfc))) aRelire.add(rfc);
@@ -116,35 +150,67 @@ function creerSynchro(client, cache, { intervalleMs = 60e3, retentionJours = 365
     // 3. Remplacement du cache, suppression de ce qui n'existe plus cote EV.
     for (const [rfc, req] of requetes) {
       const acts = (actions.get(rfc) || []).sort((a, b) => Number(a.ACTION_ID) - Number(b.ACTION_ID));
-      cache.enregistrer(req, acts, estFerme(req, acts));
+      await enregistrer(req, acts);
     }
-    for (const rfc of cache.versions().keys()) if (!requetes.has(rfc)) cache.supprimer(rfc);
-    cache.purger(limite);
+    for (const rfc of (await cache.versions()).keys()) if (!requetes.has(rfc)) await cache.supprimer(rfc);
+    await cache.purger(limite);
+    await cache.sessions.purger();
     return requetes.size;
+  }
+
+  // Controle de correspondance sur les tickets ouverts ou clos depuis 30 jours.
+  // Ne bloque jamais la synchro : une erreur ici est seulement journalisee.
+  async function controler() {
+    try {
+      const depuisClos = new Date(Date.now() - 30 * 86400e3).toISOString();
+      const anomalies = verifierCorrespondance(
+        await cache.candidats({ tous: true, depuisClos, limite: 100000 }),
+        (await client.getGroups()).records
+      );
+      const avant = await cache.lireEtat("anomalies");
+      const apres = JSON.stringify(anomalies);
+      if (anomalies.length && apres !== avant) {
+        console.warn(
+          "Correspondance EV incomplete :",
+          anomalies.map((a) => `${a.type} "${a.valeur}" (${a.nb_tickets} ticket(s))`).join(", ")
+        );
+      }
+      await cache.ecrireEtat("anomalies", apres);
+    } catch (err) {
+      console.error("Controle de correspondance en echec :", err.message);
+    }
   }
 
   // Lance une synchro, ou renvoie celle deja en cours (jamais deux en parallele).
   function executer({ complete: forcerComplete = false } = {}) {
     if (enCours) return enCours;
     const debut = new Date();
-    const derniereComplete = cache.lireEtat("derniere_complete");
-    const faireComplete =
-      forcerComplete || !derniereComplete || debut - new Date(derniereComplete) > 24 * 3600e3 || cache.compter() === 0;
 
     enCours = (async () => {
       try {
+        const derniereComplete = await cache.lireEtat("derniere_complete");
+        const faireComplete =
+          forcerComplete ||
+          !derniereComplete ||
+          debut - new Date(derniereComplete) > 24 * 3600e3 ||
+          (await cache.compter()) === 0;
         const maj = faireComplete ? await complete() : await incrementale();
-        cache.ecrireEtat("derniere_synchro", debut.toISOString());
-        if (faireComplete) cache.ecrireEtat("derniere_complete", debut.toISOString());
-        cache.ecrireEtat("derniere_duree_ms", Date.now() - debut);
-        cache.ecrireEtat("derniere_maj", maj);
-        cache.ecrireEtat("erreur", null);
-        cache.ecrireEtat("erreur_depuis", null);
+        await cache.ecrireEtat("derniere_synchro", debut.toISOString());
+        if (faireComplete) await cache.ecrireEtat("derniere_complete", debut.toISOString());
+        await cache.ecrireEtat("derniere_duree_ms", Date.now() - debut);
+        await cache.ecrireEtat("derniere_maj", maj);
+        await cache.ecrireEtat("erreur", null);
+        await cache.ecrireEtat("erreur_depuis", null);
+        await controler();
       } catch (err) {
-        // EV injoignable : on garde le cache tel quel et on le signale.
+        // EV (ou la base) injoignable : on garde le cache tel quel et on le signale.
         console.error("Synchro EasyVista en echec :", err.message);
-        cache.ecrireEtat("erreur", err.message);
-        if (!cache.lireEtat("erreur_depuis")) cache.ecrireEtat("erreur_depuis", debut.toISOString());
+        try {
+          await cache.ecrireEtat("erreur", err.message);
+          if (!(await cache.lireEtat("erreur_depuis"))) await cache.ecrireEtat("erreur_depuis", debut.toISOString());
+        } catch (errBase) {
+          console.error("Base du portail injoignable :", errBase.message);
+        }
       }
     })().finally(() => {
       enCours = null;
@@ -162,17 +228,19 @@ function creerSynchro(client, cache, { intervalleMs = 60e3, retentionJours = 365
     clearInterval(minuterie);
   }
 
-  function etat() {
+  async function etat() {
+    const lire = (cle) => cache.lireEtat(cle);
     return {
-      derniere_synchro: cache.lireEtat("derniere_synchro"),
-      derniere_complete: cache.lireEtat("derniere_complete"),
-      derniere_duree_ms: Number(cache.lireEtat("derniere_duree_ms")) || null,
-      derniere_maj: Number(cache.lireEtat("derniere_maj")) || 0,
-      erreur: cache.lireEtat("erreur"),
-      erreur_depuis: cache.lireEtat("erreur_depuis"),
+      derniere_synchro: await lire("derniere_synchro"),
+      derniere_complete: await lire("derniere_complete"),
+      derniere_duree_ms: Number(await lire("derniere_duree_ms")) || null,
+      derniere_maj: Number(await lire("derniere_maj")) || 0,
+      erreur: await lire("erreur"),
+      erreur_depuis: await lire("erreur_depuis"),
       en_cours: Boolean(enCours),
       intervalle_s: Math.round(intervalleMs / 1000),
-      nb_tickets: cache.compter(),
+      nb_tickets: await cache.compter(),
+      anomalies: JSON.parse((await lire("anomalies")) || "[]"),
     };
   }
 

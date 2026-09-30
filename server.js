@@ -81,6 +81,14 @@ api.post(
   })
 );
 
+// Formulaire EV (questionnaire) d'une entree de catalogue, au format du portail.
+api.get(
+  "/questionnaires/:id",
+  envelopper(async (req, res) => {
+    res.json(await source.getQuestionnaire(req.user, req.params.id));
+  })
+);
+
 api.get(
   "/employes",
   envelopper(async (req, res) => {
@@ -107,7 +115,9 @@ api.post(
 api.get(
   "/stats",
   envelopper(async (req, res) => {
-    res.json(await source.stats(req.user, { vue: req.query.vue }));
+    // Memes filtres que la liste : les stats decrivent toujours ce qui est affiche.
+    const { vue, q, etablissement, groupe, statut } = req.query;
+    res.json(await source.stats(req.user, { vue, q, etablissement, groupe, statut }));
   })
 );
 
@@ -140,6 +150,8 @@ async function monterFront() {
 
 async function demarrer() {
   app.use("/api", (req, res) => res.status(404).json({ error: "Route inconnue" }));
+  // Base PostgreSQL : schema a jour (migrations) avant toute requete.
+  await source.initialiser();
   const front = await monterFront();
   app.use(gererErreurs);
   serveur.listen(PORT, () => {

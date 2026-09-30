@@ -37,24 +37,22 @@ function lireCookie(req, nom) {
 
 function creerAuth(source) {
   const mode = lireMode();
-  // Sessions en memoire : perdues au redemarrage, suffisant pour le POC.
-  const sessions = new Map(); // jeton -> { utilisateurId, expire }
+  // Sessions stockees en base (source.sessions) : elles survivent a un
+  // redemarrage du service et seraient partagees entre plusieurs instances.
+  const sessions = source.sessions;
 
-  function ouvrirSession(res, utilisateurId) {
+  async function ouvrirSession(res, utilisateurId) {
     const jeton = crypto.randomBytes(32).toString("hex");
-    sessions.set(jeton, { utilisateurId, expire: Date.now() + DUREE_SESSION_MS });
+    await sessions.creer(jeton, utilisateurId, new Date(Date.now() + DUREE_SESSION_MS));
     res.cookie(COOKIE, jeton, { httpOnly: true, sameSite: "lax", maxAge: DUREE_SESSION_MS });
   }
 
-  function sessionCourante(req) {
+  // Session valide (non expiree) du cookie, ou null.
+  async function sessionCourante(req) {
     const jeton = lireCookie(req, COOKIE);
-    const s = jeton && sessions.get(jeton);
-    if (!s) return null;
-    if (s.expire < Date.now()) {
-      sessions.delete(jeton);
-      return null;
-    }
-    return { jeton, ...s };
+    if (!jeton) return null;
+    const s = await sessions.lire(jeton);
+    return s ? { jeton, ...s } : null;
   }
 
   function routes(app, envelopper) {
@@ -75,22 +73,25 @@ function creerAuth(source) {
         const utilisateur = await source.getUtilisateur(req.body?.utilisateur_id);
         if (!utilisateur) return res.status(400).json({ error: "Compte inconnu" });
         if (utilisateur.profil === "AUCUN") return res.status(403).json({ error: MESSAGE_RESERVE });
-        ouvrirSession(res, utilisateur.id);
+        await ouvrirSession(res, utilisateur.id);
         res.json(utilisateur);
       })
     );
 
-    app.post("/api/auth/logout", (req, res) => {
-      const s = sessionCourante(req);
-      if (s) sessions.delete(s.jeton);
-      res.clearCookie(COOKIE);
-      res.status(204).end();
-    });
+    app.post(
+      "/api/auth/logout",
+      envelopper(async (req, res) => {
+        const s = await sessionCourante(req);
+        if (s) await sessions.supprimer(s.jeton);
+        res.clearCookie(COOKIE);
+        res.status(204).end();
+      })
+    );
   }
 
   // Middleware : rattache l'utilisateur connecte a req.user, sinon 401.
   const exiger = envelopperMiddleware(async (req, res, next) => {
-    const s = sessionCourante(req);
+    const s = await sessionCourante(req);
     const utilisateur = s && (await source.getUtilisateur(s.utilisateurId));
     if (!utilisateur) return res.status(401).json({ error: "Non connecte" });
     // Portail reserve aux equipes : un employe sans groupe support / valideur est refuse,
