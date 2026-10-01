@@ -55,8 +55,8 @@ api.get(
 api.get(
   "/tickets",
   envelopper(async (req, res) => {
-    const { vue, q, etablissement, groupe, statut, affectation } = req.query;
-    res.json(await source.listerTickets(req.user, { vue, q, etablissement, groupe, statut, affectation }));
+    const { vue, q, etablissement, groupe, statut, affectation, retard } = req.query;
+    res.json(await source.listerTickets(req.user, { vue, q, etablissement, groupe, statut, affectation, retard }));
   })
 );
 
@@ -124,8 +124,8 @@ api.get(
   "/stats",
   envelopper(async (req, res) => {
     // Memes filtres que la liste : les stats decrivent toujours ce qui est affiche.
-    const { vue, q, etablissement, groupe, statut, affectation } = req.query;
-    res.json(await source.stats(req.user, { vue, q, etablissement, groupe, statut, affectation }));
+    const { vue, q, etablissement, groupe, statut, affectation, retard } = req.query;
+    res.json(await source.stats(req.user, { vue, q, etablissement, groupe, statut, affectation, retard }));
   })
 );
 

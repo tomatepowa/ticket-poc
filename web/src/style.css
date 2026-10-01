@@ -285,6 +285,27 @@ button, input, select, textarea {
   gap: 2px;
 }
 .stat-label { font-size: 12.5px; color: var(--ink-soft); font-weight: 500; }
+/* Cartes et groupes cliquables : appliquent le filtre correspondant */
+button.stat-filtre {
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.1s ease, box-shadow 0.1s ease;
+}
+button.stat.stat-filtre:hover { border-color: var(--accent); }
+button.stat.stat-filtre.is-actif { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent); }
+button.team-row.stat-filtre {
+  font-size: 12.5px;
+  background: none;
+  border: none;
+  padding: 4px 6px;
+  margin: -4px -6px;
+  border-radius: var(--radius-sm);
+}
+button.team-row.stat-filtre:hover { background: var(--hover); }
+button.team-row.stat-filtre.is-actif { box-shadow: 0 0 0 2px var(--accent); }
+button.team-row.stat-filtre.is-actif .team-name { color: var(--ink); font-weight: 600; }
 .stat-value {
   font-size: 28px;
   font-weight: 700;

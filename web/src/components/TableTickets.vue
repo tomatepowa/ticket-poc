@@ -20,6 +20,8 @@ const emit = defineEmits(["ouvrir", "desaffecter", "filtrer"]);
 
 // ---------- Filtres depuis la liste ----------
 
+const aVue = (code) => props.vues.some((v) => v.code === code);
+const libelleVue = (code) => props.vues.find((v) => v.code === code)?.label || code;
 const etablissementsCoches = computed(() => String(props.filtres.etablissement || "").split(",").filter(Boolean).map(Number));
 
 // Chaque filtre : possible pour ce profil ?, actif ?, changement qui l'active / le retire.
@@ -31,19 +33,12 @@ const FILTRES = {
     retirer: { groupe: "" },
     libelle: `groupe « ${t.groupe?.nom} »`,
   }),
-  // Affectation de l'étape en cours (légende et pastilles « Moi » / « Non affecté »).
-  ...Object.fromEntries(
-    Object.entries({ MOI: "affectés à moi", TIERS: "affectés à un autre", AUCUN: "non affectés" }).map(([code, libelle]) => [
-      code,
-      () => ({
-        possible: true,
-        actif: props.filtres.affectation === code,
-        activer: { affectation: code },
-        retirer: { affectation: "" },
-        libelle,
-      }),
-    ])
-  ),
+  // Affectation de l'étape en cours (légende et pastilles « Moi » / « Non affecté ») :
+  // « Moi » et « Non affecté » chargent la vue du rail quand le profil l'a,
+  // sinon (et pour « Affecté à un autre ») un filtre d'affectation.
+  MOI: () => filtreAffectation("MOI", "moi", "affectés à moi"),
+  AUCUN: () => filtreAffectation("AUCUN", "non_affectes", "non affectés"),
+  TIERS: () => filtreAffectation("TIERS", null, "affectés à un autre"),
   // Un collègue : la recherche porte aussi sur le nom de l'intervenant.
   intervenant: (t) => ({
     possible: Boolean(t.intervenant?.nom),
@@ -64,6 +59,28 @@ const FILTRES = {
     };
   },
 };
+
+const VUES_AFFECTATION = ["moi", "non_affectes"];
+function filtreAffectation(code, vue, libelle) {
+  if (vue && aVue(vue)) {
+    return {
+      possible: true,
+      actif: props.filtres.vue === vue,
+      activer: { vue, affectation: "" },
+      retirer: { vue: props.vues[0].code },
+      libelle: `vue « ${libelleVue(vue)} »`,
+    };
+  }
+  // Filtre d'affectation : on quitte une vue « Moi » / « Non affectés » qui le contredirait.
+  const vueContraire = VUES_AFFECTATION.includes(props.filtres.vue);
+  return {
+    possible: true,
+    actif: props.filtres.affectation === code,
+    activer: { affectation: code, ...(vueContraire ? { vue: props.vues[0].code } : {}) },
+    retirer: { affectation: "" },
+    libelle,
+  };
+}
 
 const filtre = (type, t) => FILTRES[type](t);
 const titreFiltre = (type, t) => {

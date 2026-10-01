@@ -18,7 +18,9 @@
 //   listerCatalogue(user)                [{ id, type, libelle, chemin }]
 //   listerTickets(user, filtres)         tickets VISIBLES par l'utilisateur
 //                                        filtres : vue, q, etablissement, groupe, statut,
-//                                        affectation (MOI | TIERS | AUCUN, vue de l'utilisateur)
+//                                        affectation (MOI | TIERS | AUCUN, vue de l'utilisateur),
+//                                        retard ("1" : tickets en retard seulement)
+//                                        statut : un code, "ACTIFS", ou plusieurs codes "OUVERT,EN_COURS"
 //   getTicket(user, rfc)                 ticket + historique + actions permises + progression
 //                                        action : { code, label, commentaire, parametre, secondaire }
 //   creerTicket(user, data)              cree le ticket au nom de l'utilisateur

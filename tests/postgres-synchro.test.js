@@ -183,6 +183,20 @@ describe("listes du portail (lues dans la base)", () => {
     assert.equal(s.parFiltreStatut[""], 2, "les compteurs de statut suivent le filtre");
   });
 
+  testPg("cartes de stats : plusieurs statuts à la fois, et tickets en retard", async () => {
+    const { ev, synchro, source, u } = await monde();
+    const enCours = await source.listerTickets(u.isabelle, { vue: "tout", statut: "OUVERT,EN_COURS" });
+    assert.deepEqual(numeros(enCours), [N.libre, N.karim, N.infra].sort());
+
+    ev.modifier(N.karim, { MAX_RESOLUTION_DATE_UT: F.ilYa(1) });
+    ev.modifier(N.resolu, { MAX_RESOLUTION_DATE_UT: F.ilYa(1) }); // résolu : jamais « en retard »
+    await synchro.executer();
+    assert.deepEqual(numeros(await source.listerTickets(u.isabelle, { vue: "tout", retard: "1" })), [N.karim]);
+    const s = await source.stats(u.isabelle, { vue: "tout", retard: "1" });
+    assert.equal(s.total, 1);
+    assert.equal(s.en_retard, 1);
+  });
+
   testPg("filtre de statut : « Actifs » exclut les résolus et clos, un statut précis ne garde que lui", async () => {
     const { source, u } = await monde();
     const actifs = await source.listerTickets(u.isabelle, { vue: "tout", statut: "ACTIFS" });

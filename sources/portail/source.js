@@ -184,8 +184,9 @@ function creerSource(client) {
       .filter((t) => !etablissements.length || etablissements.includes(t.etablissement?.id))
       .filter((t) => !filtres.groupe || t.groupe?.id === Number(filtres.groupe))
       .filter((t) => !filtres.affectation || t.affectation === filtres.affectation)
-      // "ACTIFS" : tout sauf resolu et cloture ; sinon un statut precis.
-      .filter((t) => !filtres.statut || (filtres.statut === "ACTIFS" ? !TERMINES.includes(t.statut) : t.statut === filtres.statut))
+      // "ACTIFS" : tout sauf resolu et cloture ; sinon un ou plusieurs statuts ("OUVERT,EN_COURS").
+      .filter((t) => !filtres.statut || (filtres.statut === "ACTIFS" ? !TERMINES.includes(t.statut) : filtres.statut.split(",").includes(t.statut)))
+      .filter((t) => filtres.retard !== "1" || t.en_retard)
       .filter((t) => !q || normaliser(`${t.numero} ${t.titre} ${t.demandeur?.nom} ${t.intervenant?.nom || ""}`).includes(q));
   }
 
