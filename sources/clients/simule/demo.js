@@ -4,6 +4,10 @@
 //   ["terminer", login, heures, commentaire, choix] termine l'action en cours (choix 1/0 pour une validation)
 //   ["suspendre", login, heures, commentaire]
 //   ["commenter", login, heures, commentaire]
+//   ["reprendre", login, heures, commentaire]        reprise apres une mise en attente
+//   ["transferer", login, heures, commentaire, groupe] vers un autre groupe (non affecte)
+//   ["annuler", login, heures, commentaire]          cloture au statut "Annulé"
+// Ces tickets "racontent" la demo ; volume.js en ajoute des centaines d'autres.
 // urgence / impact : ids EV (1 = le plus fort), voir donnees.js.
 // Le ticket est cree dans l'etablissement du demandeur.
 // reponses : { id_question: valeur } -> creation sans workflow, reponses, puis demarrage.

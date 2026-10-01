@@ -55,8 +55,19 @@ Puis ouvrir http://localhost:3000 et choisir un compte fictif :
 Les demandeurs (Julien Roux, Sophie Bernard…) existent dans EV mais n'ont pas
 accès au portail.
 
+**Volume de démo** : en plus d'une vingtaine de tickets écrits à la main
+(`sources/clients/simule/demo.js`), le faux EV génère environ 1 300 tickets
+sur les 90 derniers jours (`volume.js`), pour une cinquantaine de demandeurs
+répartis dans tous les établissements : prises en charge, mises en attente
+et reprises, transferts, validations et refus, réouvertures, annulations,
+tickets en retard. À un instant donné, environ 150 tickets sont en cours et
+les autres résolus ou clos (utiles aussi pour les vues du pôle BI). Le jeu
+est identique à chaque remise à zéro ; `DEMO_TICKETS` (dans `.env`) change
+le nombre de tickets générés (`DEMO_TICKETS=0` : seulement ceux de `demo.js`).
+
 `npm run reset-demo` remet les tickets de démonstration à zéro et vide la copie locale
-(même `DATABASE_URL` que le portail).
+(même `DATABASE_URL` que le portail). La première synchro qui suit prend
+une dizaine de secondes.
 
 **Liens directs** : chaque ticket a son adresse, `http://<portail>/t/<numéro EV>`
 (bouton « Copier le lien » dans le détail, ou Ctrl+clic sur le n° dans la

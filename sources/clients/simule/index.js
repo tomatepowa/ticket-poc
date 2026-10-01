@@ -13,6 +13,7 @@ const fs = require("fs");
 const Database = require("better-sqlite3");
 const D = require("./donnees");
 const DEMO = require("./demo");
+const { genererVolume } = require("./volume");
 const { ErreurSource } = require("../../erreurs");
 
 const BASE = "https://ev-simule.local/api/v1/50004";
@@ -470,7 +471,8 @@ function seedDemo() {
   const parLogin = (l) => trouver(D.EMPLOYEES, "IDENTIFICATION", l);
 
   db.transaction(() => {
-    [...DEMO].sort((a, b) => b.heures - a.heures).forEach((d) => {
+    // Tickets ecrits a la main + tickets generes en nombre (volume.js), du plus ancien au plus recent.
+    [...DEMO, ...genererVolume()].sort((a, b) => b.heures - a.heures).forEach((d) => {
       const dem = parLogin(d.demandeur);
       // Avec questionnaire : creation sans workflow, reponses, puis demarrage.
       const avecReponses = Boolean(d.reponses);
@@ -504,6 +506,16 @@ function seedDemo() {
         if (op === "terminer")
           opTerminerAction(rfc, { end_action: { action_id: enCours.action_id, doneby_mail: e.E_MAIL, comment: commentaire, choice: choix } }, date);
         if (op === "suspendre") opMajRequest(rfc, { suspended: { comment: commentaire, done_by_id: e.EMPLOYEE_ID } }, date);
+        if (op === "reprendre") opMajRequest(rfc, { restarted: { comment: commentaire, done_by_id: e.EMPLOYEE_ID } }, date);
+        if (op === "annuler") {
+          const annule = D.STATUSES.find((st) => st.STATUS_FR === "Annulé");
+          opMajRequest(rfc, { closed: { status_guid: annule.STATUS_GUID, comment: commentaire, done_by_id: e.EMPLOYEE_ID } }, date);
+        }
+        // Transfert vers un autre groupe (choix = id du groupe), comme le bouton du portail.
+        if (op === "transferer") {
+          opMajAction(enCours.action_id, { group_id: choix, done_by_id: null }, date);
+          opCreerAction(rfc, { action: { action_type_name: "Commentaire", group_id: choix, done_by_id: e.EMPLOYEE_ID, comment: commentaire } }, date);
+        }
         if (op === "commenter")
           opCreerAction(rfc, { action: { action_type_name: "Commentaire", group_id: enCours.group_id, done_by_id: e.EMPLOYEE_ID, comment: commentaire } }, date);
         // Type d'action cree dans EV mais inconnu du portail (controle de correspondance)

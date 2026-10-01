@@ -54,7 +54,10 @@ async function preparer() {
     try {
       await creerBaseSiAbsente(url, nom);
     } catch (err) {
-      raison = `PostgreSQL injoignable (${err.message || err.code}) : tests PostgreSQL ignorés. Lancer la base : docker compose up -d base`;
+      raison =
+        err.code === "42501" // droit refuse : l'utilisateur ne peut pas creer de base
+          ? `Base « ${nom} » absente et non créable par cet utilisateur : la créer une fois en administrateur (CREATE DATABASE ${nom} OWNER <utilisateur>). Tests PostgreSQL ignorés`
+          : `PostgreSQL injoignable (${err.message || err.code}) : tests PostgreSQL ignorés. Démarrer la base (npm run dev la démarre)`;
     }
   }
   if (raison && process.env.CI) throw new Error(raison);

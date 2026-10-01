@@ -109,6 +109,29 @@ const PERSONNES = [
   ["cbernardi", "Bernardi, Chloé", "Infirmière", "Clinique des Tilleuls", [], null, "2026-03-31"],
 ];
 
+// Demandeurs supplementaires (volume de demo) : repartis dans tous les etablissements
+// ouverts. Manager (valideur) d'apres le type d'etablissement ; sans manager, la
+// validation revient a la supervision.
+const PRENOMS = ["Laura", "Mehdi", "Pauline", "Romain", "Fatima", "Lucas", "Manon", "Olivier", "Sarah", "Thibault",
+  "Amandine", "Hélène", "Yassine", "Céline", "Jérôme", "Aurélie", "Bastien", "Nadège", "Florian", "Inès",
+  "Guillaume", "Mélanie", "Rachid", "Sylvie", "Damien", "Émilie", "Quentin", "Nathalie", "Anthony", "Justine"];
+const NOMS = ["Martinez", "Lopez", "Gauthier", "Perrin", "Chevalier", "Mallet", "Brunet", "Fournier", "Rey", "Arnaud",
+  "Colin", "Masson", "Picard", "Roussel", "Marchand", "Dumas", "Caron", "Giraud", "Meunier", "Bonnet",
+  "Lemoine", "Renaud", "Aubert", "Barbier", "Benoit", "Noël", "Hamon", "Rolland", "Boyer", "Schmitt"];
+const METIERS = ["Infirmière", "Aide-soignant", "Secrétaire médicale", "Cadre de santé de proximité", "Médecin",
+  "Agent administratif", "Kinésithérapeute", "Pharmacienne", "Agent d'accueil", "Psychologue", "Diététicienne",
+  "Agent des services hospitaliers", "Assistante sociale", "Manipulateur radio", "Gestionnaire paie"];
+const MANAGER_PAR_TYPE = { MCO: "cmartin", "Médecine-Chirurgie": "cmartin", Psychiatrie: "proche", SMR: "proche", EHPAD: "mleroy" };
+const sansAccent = (s) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z]/g, "");
+const ouverts = ETABLISSEMENTS.filter(([, , type]) => type !== "Siège");
+for (let i = 0; i < 50; i++) {
+  const prenom = PRENOMS[i % PRENOMS.length];
+  const nom = NOMS[(i * 7 + Math.floor(i / NOMS.length)) % NOMS.length];
+  const [site, , type] = ouverts[i % ouverts.length];
+  const login = `${sansAccent(prenom)[0]}${sansAccent(nom)}${i >= PRENOMS.length ? i : ""}`;
+  PERSONNES.push([login, `${nom}, ${prenom}`, METIERS[(i * 5) % METIERS.length], site, [], MANAGER_PAR_TYPE[type] || null]);
+}
+
 const EMPLOYEES = PERSONNES.map(([login, nom, fonction, site, groupes, manager, depart], i) => ({
   EMPLOYEE_ID: i + 1,
   LAST_NAME: nom,
