@@ -22,6 +22,8 @@ const { creerSynchro } = require("./synchro");
 const { ErreurSource } = require("../erreurs");
 
 const TERMINES = ["RESOLU", "CLOTURE"];
+// Filtres de statut de la liste : "" (tous), actifs, inactifs (résolus et clos).
+const STATUTS_LISTE = ["", "ACTIFS", "INACTIFS"];
 const JOURS_CLOS_AFFICHES = 30; // tickets clos visibles dans les listes
 const normaliser = (s) => String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 
@@ -350,18 +352,26 @@ function creerSource(client) {
 
     // ---------- Préférences d'affichage ----------
 
-    // { vue_defaut } : vue ouverte à la connexion (la première si rien n'est choisi
-    // ou si la vue choisie n'existe plus pour ce profil).
+    // { vue_defaut, statut_defaut } : vue et statut à l'ouverture du portail
+    // (la première vue et « Actifs » si rien n'est choisi, ou si le choix
+    // n'existe plus pour ce profil).
     async preferences(u) {
       const p = await cache.preferences.lire(u.id);
       const vues = vuesPour(u);
-      return { vue_defaut: vues.some((v) => v.code === p.vue_defaut) ? p.vue_defaut : vues[0].code };
+      return {
+        vue_defaut: vues.some((v) => v.code === p.vue_defaut) ? p.vue_defaut : vues[0].code,
+        statut_defaut: STATUTS_LISTE.includes(p.statut_defaut) ? p.statut_defaut : "ACTIFS",
+      };
     },
 
-    async definirPreferences(u, { vue_defaut } = {}) {
+    async definirPreferences(u, { vue_defaut, statut_defaut } = {}) {
       if (vue_defaut !== undefined) {
         if (!vuesPour(u).some((v) => v.code === vue_defaut)) throw new ErreurSource(400, "Vue inconnue");
         await cache.preferences.ecrire(u.id, "vue_defaut", vue_defaut);
+      }
+      if (statut_defaut !== undefined) {
+        if (!STATUTS_LISTE.includes(statut_defaut)) throw new ErreurSource(400, "Statut inconnu");
+        await cache.preferences.ecrire(u.id, "statut_defaut", statut_defaut);
       }
       return this.preferences(u);
     },

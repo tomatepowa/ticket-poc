@@ -21,10 +21,13 @@ const moi = ref(null);
 const vues = ref([]);
 const referentiels = ref({ etablissements: [], groupes: [], catalogue: [] });
 const filtres = reactive({ vue: "", q: "", etablissement: "", groupe: "", statut: "" });
-// Préférences de l'utilisateur (vue ouverte à la connexion), enregistrées côté serveur.
-const preferences = ref({ vue_defaut: "" });
-// Par défaut : la vue choisie par l'utilisateur, tickets actifs (tout sauf résolu / clôturé).
-const DEFAUTS = computed(() => ({ vue: preferences.value.vue_defaut || vues.value[0]?.code || "", statut: "ACTIFS" }));
+// Préférences de l'utilisateur (vue et statut à l'ouverture), enregistrées côté serveur.
+const preferences = ref({ vue_defaut: "", statut_defaut: "ACTIFS" });
+// Filtres par défaut : ceux choisis par l'utilisateur (sinon première vue, tickets actifs).
+const DEFAUTS = computed(() => ({
+  vue: preferences.value.vue_defaut || vues.value[0]?.code || "",
+  statut: preferences.value.statut_defaut ?? "ACTIFS",
+}));
 const tickets = ref([]);
 const stats = ref(null);
 const panneau = ref(null); // null | "creation" | "detail"
@@ -74,7 +77,7 @@ async function entrer(utilisateur, vuesDisponibles, prefs) {
   referentiels.value = await api("/referentiels");
   moi.value = utilisateur;
   vues.value = vuesDisponibles;
-  preferences.value = prefs || { vue_defaut: "" };
+  preferences.value = prefs || { vue_defaut: "", statut_defaut: "ACTIFS" };
   Object.assign(filtres, { q: "", etablissement: "", groupe: "", ...DEFAUTS.value });
   etat.value = "portail";
   await rafraichir();
@@ -111,11 +114,11 @@ async function rafraichir() {
 }
 
 // message : confirmation affichée quand le filtre vient d'un clic dans la liste.
-// Vue ouverte à la connexion (coche dans le rail).
-async function choisirVueDefaut(code) {
+// Vue ou statut à l'ouverture (coches du rail) : { vue_defaut } ou { statut_defaut }, et son libellé.
+async function choisirDefaut(choix, libelle) {
   try {
-    preferences.value = await api("/preferences", { method: "PUT", body: JSON.stringify({ vue_defaut: code }) });
-    toast(`Vue à l'ouverture : « ${vues.value.find((v) => v.code === code)?.label} »`);
+    preferences.value = await api("/preferences", { method: "PUT", body: JSON.stringify(choix) });
+    toast(`À l'ouverture : « ${libelle} »`);
   } catch (err) {
     toast(err.message);
   }
@@ -249,9 +252,9 @@ function onKeydown(e) {
       :filtres="filtres"
       :config="config"
       :stats="stats"
-      :vue-defaut="DEFAUTS.vue"
+      :defauts="DEFAUTS"
       @filtrer="filtrer"
-      @vue-defaut="choisirVueDefaut"
+      @defaut="choisirDefaut"
       @deconnecter="deconnecter"
     />
 

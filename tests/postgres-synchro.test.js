@@ -222,15 +222,18 @@ describe("listes du portail (lues dans la base)", () => {
 // ---------- Detail et actions ----------
 
 describe("préférences et compteurs par établissement", () => {
-  testPg("vue par défaut : la première, puis celle choisie, gardée pour l'utilisateur seul", async () => {
+  testPg("vue et statut par défaut : choisis par l'utilisateur, gardés pour lui seul", async () => {
     const { ev, source, u } = await monde();
-    assert.deepEqual(await source.preferences(u.marc), { vue_defaut: "groupes" });
-    assert.deepEqual(await source.definirPreferences(u.marc, { vue_defaut: "moi" }), { vue_defaut: "moi" });
-    // Enregistrée en base : une autre instance du portail la retrouve.
-    assert.deepEqual(await creerSource(ev).preferences(u.marc), { vue_defaut: "moi" });
-    assert.deepEqual(await source.preferences(u.karim), { vue_defaut: "groupes" }, "propre à chaque utilisateur");
-    const err = await erreurDe(source.definirPreferences(u.marc, { vue_defaut: "a_valider" }));
-    assert.equal(err.status, 400);
+    const defaut = { vue_defaut: "groupes", statut_defaut: "ACTIFS" };
+    assert.deepEqual(await source.preferences(u.marc), defaut);
+    assert.deepEqual(await source.definirPreferences(u.marc, { vue_defaut: "moi" }), { ...defaut, vue_defaut: "moi" });
+    // « Tous » (statut vide) est un choix possible, distinct de « rien de choisi ».
+    assert.deepEqual(await source.definirPreferences(u.marc, { statut_defaut: "" }), { vue_defaut: "moi", statut_defaut: "" });
+    // Enregistrées en base : une autre instance du portail les retrouve.
+    assert.deepEqual(await creerSource(ev).preferences(u.marc), { vue_defaut: "moi", statut_defaut: "" });
+    assert.deepEqual(await source.preferences(u.karim), defaut, "propres à chaque utilisateur");
+    assert.equal((await erreurDe(source.definirPreferences(u.marc, { vue_defaut: "a_valider" }))).status, 400);
+    assert.equal((await erreurDe(source.definirPreferences(u.marc, { statut_defaut: "RESOLU" }))).status, 400);
   });
 
   testPg("compteurs par établissement : à moi / total de la vue affichée, avec les filtres", async () => {

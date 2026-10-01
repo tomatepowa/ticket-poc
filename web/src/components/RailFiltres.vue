@@ -10,10 +10,11 @@ const props = defineProps({
   filtres: { type: Object, required: true },
   config: { type: Object, required: true },
   stats: { type: Object, default: null },
-  // Vue ouverte à la connexion (coche ✓) ; choisie au clic sur le rond d'une autre vue.
-  vueDefaut: { type: String, default: "" },
+  // Vue et statut à l'ouverture : { vue, statut } (coche ✓) ; un clic sur le rond
+  // d'une autre vue ou d'un autre statut change ce choix.
+  defauts: { type: Object, required: true },
 });
-const emit = defineEmits(["filtrer", "deconnecter", "vue-defaut"]);
+const emit = defineEmits(["filtrer", "deconnecter", "defaut"]);
 
 const STATUTS = [
   { code: "", label: "Tous" },
@@ -123,27 +124,6 @@ function changerTheme() {
 
     <nav class="rail-filters" aria-label="Filtres">
       <div class="rail-group">
-        <span class="rail-label" id="l-vue">Vue</span>
-        <div class="vue-list" role="group" aria-labelledby="l-vue">
-          <div v-for="v in vues" :key="v.code" class="vue-ligne" :class="{ 'is-defaut': v.code === vueDefaut }">
-            <button class="vue-item" :aria-pressed="v.code === filtres.vue" @click="emit('filtrer', { vue: v.code })">
-              <span>{{ v.label }}</span>
-              <span v-if="stats?.parVue" class="vue-compte">{{ stats.parVue[v.code] ?? 0 }}</span>
-            </button>
-            <button
-              type="button"
-              class="vue-defaut"
-              :aria-pressed="v.code === vueDefaut"
-              :title="v.code === vueDefaut ? 'Vue affichée à l\'ouverture du portail' : 'Afficher cette vue à l\'ouverture du portail'"
-              :aria-label="`Vue par défaut : ${v.label}`"
-              @click="v.code !== vueDefaut && emit('vue-defaut', v.code)"
-            >{{ v.code === vueDefaut ? "✓" : "" }}</button>
-          </div>
-        </div>
-        <p class="vue-legende">✓ vue affichée à l'ouverture</p>
-      </div>
-
-      <div class="rail-group">
         <label for="f-recherche">Recherche</label>
         <input
           id="f-recherche"
@@ -155,18 +135,44 @@ function changerTheme() {
       </div>
 
       <div class="rail-group">
-        <span class="rail-label" id="l-statut">Statut</span>
-        <div class="chip-set" role="group" aria-labelledby="l-statut">
-          <button
-            v-for="s in STATUTS"
-            :key="s.code"
-            class="chip"
-            :aria-pressed="s.code === filtres.statut"
-            @click="emit('filtrer', { statut: s.code })"
-          >
-            {{ s.label }}<span v-if="stats?.parFiltreStatut" class="chip-compte">({{ stats.parFiltreStatut[s.code] || 0 }})</span>
-          </button>
+        <span class="rail-label" id="l-vue">Vue</span>
+        <div class="vue-list" role="group" aria-labelledby="l-vue">
+          <div v-for="v in vues" :key="v.code" class="vue-ligne" :class="{ 'is-defaut': v.code === defauts.vue }">
+            <button class="vue-item" :aria-pressed="v.code === filtres.vue" @click="emit('filtrer', { vue: v.code })">
+              <span>{{ v.label }}</span>
+              <span v-if="stats?.parVue" class="vue-compte">{{ stats.parVue[v.code] ?? 0 }}</span>
+            </button>
+            <button
+              type="button"
+              class="vue-defaut"
+              :aria-pressed="v.code === defauts.vue"
+              :title="v.code === defauts.vue ? 'Vue affichée à l\'ouverture du portail' : 'Afficher cette vue à l\'ouverture du portail'"
+              :aria-label="`Vue par défaut : ${v.label}`"
+              @click="v.code !== defauts.vue && emit('defaut', { vue_defaut: v.code }, v.label)"
+            >{{ v.code === defauts.vue ? "✓" : "" }}</button>
+          </div>
         </div>
+      </div>
+
+      <div class="rail-group">
+        <span class="rail-label" id="l-statut">Statut</span>
+        <div class="vue-list" role="group" aria-labelledby="l-statut">
+          <div v-for="s in STATUTS" :key="s.code" class="vue-ligne" :class="{ 'is-defaut': s.code === defauts.statut }">
+            <button class="vue-item" :aria-pressed="s.code === filtres.statut" @click="emit('filtrer', { statut: s.code })">
+              <span>{{ s.label }}</span>
+              <span v-if="stats?.parFiltreStatut" class="vue-compte">{{ stats.parFiltreStatut[s.code] ?? 0 }}</span>
+            </button>
+            <button
+              type="button"
+              class="vue-defaut"
+              :aria-pressed="s.code === defauts.statut"
+              :title="s.code === defauts.statut ? 'Statut affiché à l\'ouverture du portail' : 'Afficher ce statut à l\'ouverture du portail'"
+              :aria-label="`Statut par défaut : ${s.label}`"
+              @click="s.code !== defauts.statut && emit('defaut', { statut_defaut: s.code }, s.label)"
+            >{{ s.code === defauts.statut ? "✓" : "" }}</button>
+          </div>
+        </div>
+        <p class="vue-legende">✓ choix affiché à l'ouverture du portail</p>
       </div>
 
       <!-- Groupe : inutile pour qui n'appartient qu'à un groupe (le clic sur un badge de groupe

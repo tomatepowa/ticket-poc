@@ -40,7 +40,7 @@ api.get(
   })
 );
 
-// Préférences d'affichage de l'utilisateur connecté : { vue_defaut }
+// Préférences d'affichage de l'utilisateur connecté : { vue_defaut, statut_defaut }
 api.put(
   "/preferences",
   envelopper(async (req, res) => {
