@@ -1,7 +1,9 @@
 <script setup>
 // Résumé des filtres actifs, en haut de la liste : une pastille par filtre (✕ pour
 // le retirer seul) et « Tout effacer » pour revenir aux filtres par défaut.
-// La vue n'en fait pas partie : c'est le titre de la page.
+// Le statut est toujours affiché, même par défaut (« Actifs », sans ✕) : la liste
+// n'est jamais filtrée sans qu'on le voie. La vue n'en fait pas partie : c'est le
+// titre de la page.
 import { computed } from "vue";
 
 const props = defineProps({
@@ -19,9 +21,14 @@ const nomGroupe = (id) => props.referentiels.groupes.find((g) => String(g.id) ==
 const actifs = computed(() => {
   const f = props.filtres;
   const liste = [];
-  if (f.statut !== props.defauts.statut) {
-    liste.push({ cle: "statut", type: "Statut", texte: LIBELLE_STATUT[f.statut] ?? f.statut, retirer: { statut: props.defauts.statut } });
-  }
+  // retirer null : filtre par défaut, affiché mais rien à retirer.
+  const statutDefaut = f.statut === props.defauts.statut;
+  liste.push({
+    cle: "statut",
+    type: "Statut",
+    texte: LIBELLE_STATUT[f.statut] ?? f.statut,
+    retirer: statutDefaut ? null : { statut: props.defauts.statut },
+  });
   if (f.q) liste.push({ cle: "q", type: "Recherche", texte: `« ${f.q} »`, retirer: { q: "" } });
   if (f.groupe) liste.push({ cle: "groupe", type: "Groupe", texte: nomGroupe(f.groupe), retirer: { groupe: "" } });
   const coches = String(f.etablissement || "").split(",").filter(Boolean).map(Number);
@@ -36,6 +43,9 @@ const actifs = computed(() => {
   return liste;
 });
 
+// Au moins un filtre différent des valeurs par défaut.
+const modifies = computed(() => actifs.value.some((f) => f.retirer));
+
 function retirer(filtre) {
   emit("filtrer", filtre.retirer, `Filtre retiré : ${filtre.type.toLowerCase()} ${filtre.texte}`);
 }
@@ -46,14 +56,21 @@ function toutEffacer() {
 </script>
 
 <template>
-  <div v-if="actifs.length" class="filtres-actifs" role="region" aria-label="Filtres actifs">
+  <div class="filtres-actifs" :class="{ 'is-defaut': !modifies }" role="region" aria-label="Filtres actifs">
     <span class="filtres-actifs-titre">Filtres :</span>
     <span v-for="f in actifs" :key="f.cle" class="filtre-actif">
       <span class="filtre-actif-type">{{ f.type }}</span>
       <span class="filtre-actif-texte">{{ f.texte }}</span>
-      <button type="button" class="filtre-actif-retirer" :aria-label="`Retirer le filtre ${f.type} ${f.texte}`" @click="retirer(f)">✕</button>
+      <button
+        v-if="f.retirer"
+        type="button"
+        class="filtre-actif-retirer"
+        :aria-label="`Retirer le filtre ${f.type} ${f.texte}`"
+        @click="retirer(f)"
+      >✕</button>
+      <span v-else class="filtre-actif-defaut">par défaut</span>
     </span>
-    <button type="button" class="filtres-effacer" @click="toutEffacer">
+    <button v-if="modifies" type="button" class="filtres-effacer" @click="toutEffacer">
       <span aria-hidden="true">⌫</span> Tout effacer
     </button>
   </div>
