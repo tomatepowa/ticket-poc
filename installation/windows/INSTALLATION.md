@@ -14,15 +14,21 @@ Windows, et le portail tourné en **service Windows** (WinSW).
  Pôle BI (Power BI…) ──SQL, lecture seule─┘  (rôle bi_lecteur, schéma "bi")
 ```
 
-La base PostgreSQL n'est qu'une **copie de travail** d'EasyVista (reconstruite
-automatiquement si elle est vidée) plus les sessions de connexion.
+La base PostgreSQL contient surtout une **copie de travail** d'EasyVista
+(reconstruite automatiquement si elle est vidée), plus les sessions de
+connexion et les préférences d'affichage de chaque utilisateur (vue et statut
+proposés à l'ouverture).
+
+**Dossier du portail** : toute cette procédure suppose le portail copié dans
+`C:\PortailTickets` (le dossier qui contient `package.json`). Un autre dossier
+convient : adapter alors les chemins des commandes ci-dessous.
 
 ## 1. Prérequis
 
 | Élément | Version | Source |
 |---|---|---|
 | Windows Server | 2019 ou 2022 | — |
-| Node.js | 22 LTS (ou 20 LTS), installeur `.msi` x64 | https://nodejs.org |
+| Node.js | 22 LTS (22.12 ou plus) ou 20 LTS (20.19 ou plus), installeur `.msi` x64 | https://nodejs.org |
 | PostgreSQL | 16, installeur Windows x64 | https://www.postgresql.org/download/windows/ |
 | WinSW | 2.12, fichier `WinSW-x64.exe` | https://github.com/winsw/winsw/releases |
 
@@ -33,7 +39,12 @@ Accès réseau nécessaires :
 - **entrant** sur le port du portail (3000 par défaut) depuis les postes des équipes ;
 - **entrant** sur le port PostgreSQL (5432) depuis le poste ou serveur du pôle BI uniquement.
 
-## 2. PostgreSQL
+## 2. Copie du portail
+
+Copier le dossier du portail (version livrée, ou clone du dépôt) dans
+`C:\PortailTickets`. Les commandes suivantes y font référence.
+
+## 3. PostgreSQL
 
 1. Lancer l'installeur PostgreSQL 16 (composants : serveur et outils en ligne
    de commande ; Stack Builder inutile). Noter le mot de passe du compte `postgres`.
@@ -51,11 +62,10 @@ Accès réseau nécessaires :
 
 Les tables et vues sont créées par le portail lui-même à son premier démarrage.
 
-## 3. Portail
+## 4. Service Windows du portail
 
-1. Copier le dossier du portail dans `C:\PortailTickets` (ou autre).
-2. Télécharger `WinSW-x64.exe`.
-3. Dans PowerShell **en tant qu'administrateur** :
+1. Télécharger `WinSW-x64.exe`.
+2. Dans PowerShell **en tant qu'administrateur** :
 
    ```powershell
    cd C:\PortailTickets
@@ -63,10 +73,10 @@ Les tables et vues sont créées par le portail lui-même à son premier démarr
    ```
 
    Au premier passage, le script crée `PortailTickets.xml` à la racine et s'arrête.
-4. Compléter `PortailTickets.xml` (toutes les valeurs `A_COMPLETER`) :
+3. Compléter `PortailTickets.xml` (toutes les valeurs `A_COMPLETER`) :
    mot de passe du rôle `portail`, URL, compte et jeton de l'API EasyVista.
-5. Relancer la même commande : dépendances, build, création et démarrage du service.
-6. Ouvrir `http://<serveur>:3000`.
+4. Relancer la même commande : dépendances, build, création et démarrage du service.
+5. Ouvrir `http://<serveur>:3000`.
 
 Le fichier `PortailTickets.xml` contient des secrets : le script en réserve la
 lecture aux administrateurs et au compte SYSTEM.
@@ -81,7 +91,7 @@ un compte de service dédié, ajouter dans `PortailTickets.xml` :
 choisissant un compte : à réserver aux tests (limiter les comptes avec
 `DEV_COMPTES`). La connexion SSO (AD) est la prochaine étape du projet.
 
-## 4. Accès du pôle BI
+## 5. Accès du pôle BI
 
 1. Dans `C:\Program Files\PostgreSQL\16\data\postgresql.conf` : `listen_addresses = '*'`
    (ou l'adresse IP du serveur).
@@ -104,20 +114,22 @@ Vues disponibles (schéma `bi`) :
 | `bi.charge_groupes` | tickets non clos par groupe et statut, dont en retard |
 | `bi.synchro` | date de la dernière synchronisation avec EasyVista |
 
-Les **descriptions et commentaires** (texte libre) sont exposés au pôle BI :
-les utilisateurs ne saisissent pas de données de santé dans les tickets. Les
+Les **descriptions et commentaires** (texte libre) sont exposés au pôle BI,
+**en texte seul** : sans mise en forme ni captures d'écran (les images collées
+dans EasyVista y deviennent « [image] » et restent dans EasyVista).
+Décision : les utilisateurs ne saisissent pas de données de santé dans les tickets. Les
 tableaux de bord et exports qui les reprennent suivent les mêmes règles de
 diffusion que les tickets. Périmètre : tickets ouverts et tickets clos depuis
 moins de `RETENTION_JOURS` (365 jours par défaut).
 
-## 5. HTTPS (recommandé)
+## 6. HTTPS (recommandé)
 
 Le portail sert du HTTP. Pour du HTTPS avec le certificat de l'établissement,
 placer IIS en frontal : modules **URL Rewrite** et **Application Request
 Routing**, règle de proxy inverse vers `http://localhost:3000`, et ne plus
 ouvrir le port 3000 qu'en local.
 
-## 6. Mise à jour
+## 7. Mise à jour
 
 1. Remplacer les fichiers du portail par la nouvelle version, **en gardant**
    `PortailTickets.exe`, `PortailTickets.xml` et `journaux\`.
@@ -125,7 +137,7 @@ ouvrir le port 3000 qu'en local.
    script arrête le service, reconstruit et le redémarre. Les évolutions de la
    base sont appliquées automatiquement au démarrage.
 
-## 7. Installation hors ligne (serveur sans accès npm)
+## 8. Installation hors ligne (serveur sans accès npm)
 
 Sur un poste Windows x64 connecté, avec la même version de Node.js :
 
@@ -135,22 +147,24 @@ npm run build
 npm prune --omit=dev
 ```
 
-Copier tout le dossier (avec `node_modules` et `dist`) sur le serveur, puis :
+Copier tout le dossier (avec `node_modules` et `dist`) dans `C:\PortailTickets` sur le
+serveur, puis, dans ce dossier :
 
 ```powershell
 .\installation\windows\installer.ps1 -WinSW C:\Telechargements\WinSW-x64.exe -HorsLigne
 ```
 
-## 8. Sauvegardes
+## 9. Sauvegardes
 
-La base est une copie reconstruite automatiquement depuis EasyVista : une perte
-n'entraîne qu'une resynchronisation complète (et la reconnexion des
-utilisateurs). Une sauvegarde n'est donc pas indispensable ; si la politique
-d'exploitation l'exige : `pg_dump -U postgres -Fc portail > portail.dump` en
-tâche planifiée. Les sauvegardes contiennent des données de tickets : même
+La copie des tickets se reconstruit automatiquement depuis EasyVista. Une perte
+de la base n'entraîne donc qu'une resynchronisation complète, la reconnexion
+des utilisateurs, et la perte de leurs préférences d'affichage (chacun
+recoche sa vue et son statut par défaut). Une sauvegarde n'est pas
+indispensable ; si la politique d'exploitation l'exige :
+`pg_dump -U postgres -Fc portail > portail.dump` en tâche planifiée. Les sauvegardes contiennent des données de tickets : même
 protection que la base.
 
-## 9. Dépannage
+## 10. Dépannage
 
 | Symptôme | Où regarder |
 |---|---|
@@ -159,6 +173,7 @@ protection que la base.
 | « Données EasyVista il y a … » qui vieillit, bandeau orange | accès sortant à l'API EV, jeton `EV_TOKEN` (journaux : « Synchro EasyVista en echec ») |
 | « Correspondance EasyVista à compléter » (superviseurs) | statut / type d'action / groupe EV inconnu : adapter `sources\portail\correspondance.js` |
 | Le pôle BI ne se connecte pas | `pg_hba.conf`, `listen_addresses`, pare-feu 5432 |
+| Pièces jointes d'un ticket absentes ou en erreur | accès sortant à l'API EV, droits du compte de service EV sur les documents |
 
 Commandes utiles : `Get-Service PortailTickets`, `Restart-Service PortailTickets`,
 `.\PortailTickets.exe status`.

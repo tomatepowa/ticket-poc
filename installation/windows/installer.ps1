@@ -49,9 +49,11 @@ if (-not $admin) { Echec "lancer PowerShell en tant qu'administrateur." }
 if (-not (Test-Path (Join-Path $racine "package.json"))) { Echec "package.json introuvable dans $racine." }
 
 $node = Get-Command node -ErrorAction SilentlyContinue
-if (-not $node) { Echec "Node.js introuvable. Installer Node.js LTS (20 ou 22) : https://nodejs.org" }
-$versionNode = [int]((node -v).TrimStart("v").Split(".")[0])
-if ($versionNode -lt 20) { Echec "Node.js $(node -v) trop ancien : version 20 ou plus requise." }
+if (-not $node) { Echec "Node.js introuvable. Installer Node.js LTS (22 ou 20) : https://nodejs.org" }
+# Minimum exige par Vite (build du front) : 20.19 ou 22.12.
+$v = (node -v).TrimStart("v").Split(".") | ForEach-Object { [int]$_ }
+$nodeOk = ($v[0] -eq 20 -and $v[1] -ge 19) -or ($v[0] -eq 22 -and $v[1] -ge 12) -or ($v[0] -gt 22)
+if (-not $nodeOk) { Echec "Node.js $(node -v) trop ancien : 22.12 ou plus (ou 20.19 ou plus) requis." }
 Write-Host "Node.js $(node -v), npm $(npm -v)"
 
 if (-not (Test-Path $serviceExe)) {

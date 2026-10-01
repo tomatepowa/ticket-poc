@@ -9,7 +9,8 @@
     "start": "node server.js",
     "build": "vite build",
     "test": "node --test --test-concurrency=1",
-    "reset-demo": "node scripts/reset-demo.js"
+    "reset-demo": "node scripts/reset-demo.js",
+    "captures": "node scripts/captures-ecran.js"
   },
   "dependencies": {
     "express": "^4.19.2",
@@ -25,6 +26,6 @@
     "better-sqlite3": "^12.11.1"
   },
   "engines": {
-    "node": ">=20"
+    "node": "^20.19.0 || >=22.12.0"
   }
 }

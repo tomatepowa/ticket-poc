@@ -19,6 +19,23 @@ Tant que l'API EV et l'AD ne sont pas accessibles, le portail tourne sur un
 **faux EasyVista** qui parle comme la vraie API REST, et une **connexion de
 développement**.
 
+## Aperçu
+
+Données de démonstration (faux EasyVista, personnes fictives).
+
+| | |
+|---|---|
+| ![Liste des tickets d'un intervenant](docs/captures/02-liste.png) | ![Filtres actifs, établissements et groupe cochés](docs/captures/03-filtres.png) |
+| **Liste** d'un intervenant : vues et statuts avec compteurs (✓ = choix à l'ouverture), cartes de vues | **Filtres** : résumé en haut (✕ pour retirer, « Tout effacer »), établissements et groupes cochés en tête |
+| ![Détail d'un ticket et ses actions](docs/captures/04-detail.png) | ![Captures collées et pièce jointe](docs/captures/05-captures-pieces-jointes.png) |
+| **Détail** : actions attendues en boutons, les autres repliées ; historique ; informations | **Captures** collées dans la description, pièces jointes, clic pour agrandir |
+| ![Saisie d'un ticket](docs/captures/07-saisie.png) | ![Thème sombre](docs/captures/08-theme-sombre.png) |
+| **Saisie** pour le compte d'un demandeur | **Thème sombre** |
+
+Autres captures dans [docs/captures](docs/captures) (connexion, cadre valideur,
+capture agrandie). Pour les régénérer après une évolution de l'écran, portail
+lancé (`npm run dev`) : `npm run captures` (Chrome ou Edge installé, Node 22+).
+
 ## Lancer le POC (poste de développement)
 
 ```bash
@@ -117,10 +134,11 @@ installer). Deux familles :
   portail de bout en bout, sur un faux EV en mémoire (`tests/faux-ev.js`).
 
 Les tests PostgreSQL utilisent une base **dédiée**, `TEST_DATABASE_URL` (voir
-`.env.exemple`), vidée à chaque exécution : son nom doit contenir « test »,
-et elle est créée automatiquement dans le PostgreSQL du poste
-(`docker compose up -d base`). Sans elle, ces tests sont ignorés avec un
-message, les autres tournent.
+`.env.exemple`), vidée à chaque exécution : son nom doit contenir « test ».
+Elle est créée automatiquement dans le PostgreSQL du poste si l'utilisateur en
+a le droit (cas du conteneur `docker compose up -d base`) ; sinon, la créer une
+fois en administrateur (`CREATE DATABASE portail_test OWNER portail;`). Sans
+elle, ces tests sont ignorés avec un message, les autres tournent.
 
 **Adapter à la vraie instance EV** : les tests ne contiennent aucun nom de
 statut, de type d'action ou de groupe ; ils les lisent dans
@@ -145,20 +163,32 @@ sources/portail/              Logique du portail, identique en simulation et sur
   modele.js                     profils, étape affichée, droits de chaque utilisateur, boutons proposés
   source.js                     besoins du portail -> lecture du cache ou appels REST EV
   base.js                       connexion PostgreSQL (DATABASE_URL) et migrations au démarrage
-  sql/                          schéma : 001 tables du portail, 002 vues du pôle BI
+  sql/                          schéma, appliqué dans l'ordre au démarrage : 001 tables du portail,
+                                002-003 vues du pôle BI, 004 préférences des utilisateurs,
+                                005 descriptions et commentaires en texte seul
   questionnaires.js             formulaires EV : lecture, conditions, contrôle des réponses
-  cache.js                      copie locale des tickets EV + sessions (schéma PostgreSQL "portail")
+  texte.js                      descriptions EV en HTML : texte seul, version sans images intégrées
+  cache.js                      copie locale des tickets EV, sessions, préférences (schéma "portail")
   synchro.js                    alimentation du cache : par différence chaque minute, complète chaque jour
   controle.js                   correspondance EV -> portail complète ? (après chaque synchro)
 sources/clients/http.js       Client de la vraie API REST EV (à valider sur une instance).
 sources/clients/simule/       Faux EV (démo, SQLite) : mêmes routes, mêmes réponses JSON,
-                              workflows simples, établissements d'un groupe fictif de cliniques privées.
+                              workflows simples, établissements d'un groupe fictif de cliniques privées :
+  donnees.js                    référentiels (établissements, employés, groupes, catalogue, formulaires)
+  demo.js, volume.js            tickets écrits à la main + ~1 300 tickets générés
+  fichiers.js                   fausses captures d'écran et pièces jointes
 installation/windows/         Installation Windows : script, base, service WinSW, documentation.
+scripts/dev.js                npm run dev : base Docker + portail, redémarrage auto du serveur.
 scripts/reset-demo.js         Remise à zéro de la démo.
+scripts/captures-ecran.js     Captures d'écran de la documentation (docs/captures/).
+tests/                        npm test (voir « Tests ») ; .github/workflows/ci.yml : CI GitHub.
 web/                          Front Vue 3 (build Vite -> dist/, config dans vite.config.mjs) :
   src/App.vue                   session, filtres, panneaux, liens directs /t/<n°>
-  src/components/               connexion, rail de filtres, fraîcheur des données, stats, liste, saisie, détail,
-                                FormulaireEV.vue (formulaire générique d'après un questionnaire EV)
+  src/components/               connexion, rail de filtres, résumé des filtres actifs, fraîcheur
+                                des données, cartes de vues, liste, saisie, détail, et :
+                                FormulaireEV.vue (formulaire générique d'après un questionnaire EV),
+                                ContenuRiche.vue (description / commentaire EV, HTML assaini),
+                                Apercu.vue (capture ou pièce jointe en grand)
   src/api.js, src/outils.js     appels /api, libellés, formats, notification
 ```
 
@@ -186,20 +216,25 @@ lus dans une copie locale PostgreSQL (schéma `portail`) :
 - **EV injoignable** : la liste et le détail s'affichent depuis la copie, avec
   un avertissement ; aucune action n'est proposée tant qu'EV ne répond pas.
 
-Vider les tables du schéma `portail` est sans risque : la synchro les
-reconstruit. Elles contiennent des descriptions de tickets : la base suit les
-mêmes règles de sécurité que le serveur (accès, sauvegardes, chiffrement, HDS).
-Les sessions de connexion sont aussi en base : elles survivent à un redémarrage.
+Vider les tables de tickets du schéma `portail` (`tickets`, `actions`,
+`etat`) est sans risque : la synchro les reconstruit. Elles contiennent des
+descriptions de tickets (sans les images, qui restent dans EV) : la base suit
+les mêmes règles de sécurité que le serveur (accès, sauvegardes, chiffrement,
+HDS). Également en base : les sessions de connexion (elles survivent à un
+redémarrage) et les **préférences** de chaque utilisateur
+(`portail.preferences` : vue et statut cochés comme choix par défaut), qui,
+elles, ne se reconstruisent pas.
 
 ## Pôle BI
 
 Le rôle PostgreSQL `bi_lecteur` (lecture seule, requêtes limitées à 60 s) ne
 voit que le schéma `bi`, fait de vues « contrat » aux colonnes stables :
 `bi.tickets`, `bi.actions` (historique), `bi.charge_groupes`, `bi.synchro`
-(fraîcheur). Les descriptions de tickets et commentaires d'actions y figurent
-(décision du 01/10/2026 : pas de données de santé saisies dans les tickets ;
-à garder sous le regard du DPO). Détail et connexion Power BI :
-[INSTALLATION.md](installation/windows/INSTALLATION.md#4-accès-du-pôle-bi).
+(fraîcheur). Les descriptions de tickets et commentaires d'actions y figurent,
+en texte seul (sans mise en forme ni images ; décision du 01/10/2026 : pas de
+données de santé saisies dans les tickets ; à garder sous le regard du DPO).
+Détail et connexion Power BI :
+[INSTALLATION.md](installation/windows/INSTALLATION.md#5-accès-du-pôle-bi).
 
 ## Formulaires (questionnaires EV)
 
@@ -260,7 +295,8 @@ D'après la [documentation de l'API REST](https://docs.easyvista.com/docs/webser
 
 | Bouton du portail | Appel EV |
 |---|---|
-| Prendre en charge | `PUT /actions/{id}` `{ done_by_id }` |
+| Prendre en charge, réaffecter à un collègue | `PUT /actions/{id}` `{ done_by_id }` (+ commentaire de trace pour une réaffectation) |
+| Remettre dans le groupe (non affecté) | `PUT /actions/{id}` `{ done_by_id: null }` + commentaire de trace |
 | Résoudre, Valider, Refuser, Clôturer, Rouvrir | `PUT /actions/{rfc}` `{ end_action: { action_id, doneby_mail, choice } }` |
 | Mettre en attente / Reprendre | `PUT /requests/{rfc}` `{ suspended }` / `{ restarted }` |
 | Transférer | `PUT /actions/{id}` `{ group_id }` + commentaire |
@@ -271,6 +307,7 @@ D'après la [documentation de l'API REST](https://docs.easyvista.com/docs/webser
 | Saisie avec formulaire | `POST /requests/without-workflow`, `POST /questions-result/{request_id}/{question_id}`, `PUT /requests/{rfc}/workflowstart` |
 | Formulaire de fin d'étape | `GET /requests/{rfc}/actions/{action_id}/questionnaire`, puis réponses et fin d'action |
 | Réponses d'un ticket | `GET /questions-result/{request_id}` |
+| Pièces jointes d'un ticket | `GET /requests/{rfc}/documents`, `GET /requests/{rfc}/documents/{document_id}` |
 | Synchronisation | `GET /requests?sort=last_update+desc&max_rows&offset`, `GET /actions` |
 
 ### À vérifier sur une vraie instance
@@ -287,7 +324,11 @@ Signalé par `A VERIFIER` dans `sources/clients/http.js` et `sources/portail/syn
 - questionnaires : champ du catalogue qui donne le questionnaire, format des
   questions (type, obligatoire, choix, condition), format des réponses (choix
   multiples), usage de `without-workflow` / `workflowstart` hors agent virtuel ;
-- champs de fin de validité (localisation, catalogue) et de départ (employé).
+- champs de fin de validité (localisation, catalogue) et de départ (employé) ;
+- captures d'écran collées dans une description : image intégrée, lien vers un
+  fichier EV ou pièce jointe ; réponse de `GET /requests/{rfc}/documents/{id}`
+  (fichier brut ou base64, type et nom du fichier) ;
+- groupes : l'instance a-t-elle des groupes et sous-groupes (champ parent) ?
 
 ## Variables d'environnement
 
@@ -301,6 +342,9 @@ Signalé par `A VERIFIER` dans `sources/clients/http.js` et `sources/portail/syn
 | `DEV_COMPTES` | e-mails proposés à la connexion de dev sur le vrai EV | 100 premiers employés ayant un profil |
 | `AUTH_MODE` | `dev`, `sso` | `dev` en local, **obligatoire** en production |
 | `PORT` | | `3000` |
+| `TEST_DATABASE_URL` | base **dédiée** aux tests PostgreSQL (`npm test`), nom contenant « test » | tests PostgreSQL ignorés (échec en CI) |
+| `DEMO_TICKETS` | nombre de tickets générés par le faux EV (démo) | `1300` |
+| `DEV_CONTENEUR_PG` | conteneur Docker démarré par `npm run dev` (poste de dev) | aucun |
 
 `AUTH_MODE=dev` permet de se connecter sans mot de passe : à réserver à un
 poste ou un réseau de test.
@@ -314,3 +358,6 @@ poste ou un réseau de test.
    retrouver l'employé EV par son e-mail.
 3. **Référentiels réels** : établissements (localisations EV), groupes et
    catalogue lus dans EV remplacent ceux du faux EV.
+4. **Images hébergées dans EV** : si les captures collées sont des liens vers
+   des fichiers EV, les faire passer par le portail (compte de service), comme
+   les pièces jointes.
