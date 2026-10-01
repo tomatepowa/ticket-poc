@@ -34,11 +34,17 @@ const texte = computed(() => {
   return `Données EasyVista ${formatDepuis(e.derniere_synchro, maintenant.value)} (${formatHeure(e.derniere_synchro)})`;
 });
 
+// La liste ne se recharge que si la synchro a vraiment changé des tickets (synchro
+// incrémentale avec des tickets relus, ou synchro complète) : sinon elle bougerait
+// toutes les minutes pour rien.
 async function lireEtat() {
   try {
-    const precedent = etat.value?.derniere_synchro;
+    const avant = etat.value;
     etat.value = await api("/synchro");
-    if (precedent && etat.value.derniere_synchro !== precedent) emit("nouvelles-donnees");
+    const apres = etat.value;
+    const nouvelleSynchro = avant?.derniere_synchro && apres.derniere_synchro !== avant.derniere_synchro;
+    const changements = apres.derniere_maj > 0 || apres.derniere_complete !== avant?.derniere_complete;
+    if (nouvelleSynchro && changements) emit("nouvelles-donnees");
   } catch {
     // Silencieux : le bandeau garde le dernier etat connu.
   }
