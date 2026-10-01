@@ -10,6 +10,7 @@ import TableTickets from "./components/TableTickets.vue";
 import PanneauCreation from "./components/PanneauCreation.vue";
 import PanneauDetail from "./components/PanneauDetail.vue";
 import BandeauSynchro from "./components/BandeauSynchro.vue";
+import FiltresActifs from "./components/FiltresActifs.vue";
 
 const TITRE_PAGE = document.title;
 
@@ -20,6 +21,8 @@ const moi = ref(null);
 const vues = ref([]);
 const referentiels = ref({ etablissements: [], groupes: [], catalogue: [] });
 const filtres = reactive({ vue: "", q: "", etablissement: "", groupe: "", statut: "" });
+// Par défaut : tickets actifs (tout sauf résolu / clôturé), les autres restent à un clic.
+const DEFAUTS = { statut: "ACTIFS" };
 const tickets = ref([]);
 const stats = ref(null);
 const panneau = ref(null); // null | "creation" | "detail"
@@ -69,8 +72,7 @@ async function entrer(utilisateur, vuesDisponibles) {
   referentiels.value = await api("/referentiels");
   moi.value = utilisateur;
   vues.value = vuesDisponibles;
-  // Par défaut : tickets actifs (tout sauf résolu / clôturé), les clos restent à un clic.
-  Object.assign(filtres, { vue: vuesDisponibles[0].code, q: "", etablissement: "", groupe: "", statut: "ACTIFS" });
+  Object.assign(filtres, { vue: vuesDisponibles[0].code, q: "", etablissement: "", groupe: "", ...DEFAUTS });
   etat.value = "portail";
   await rafraichir();
 
@@ -248,6 +250,8 @@ function onKeydown(e) {
           <span aria-hidden="true">+</span> Nouveau ticket
         </button>
       </header>
+
+      <FiltresActifs :filtres="filtres" :referentiels="referentiels" :defauts="DEFAUTS" @filtrer="filtrer" />
 
       <BandeauSynchro :profil="moi.profil" @nouvelles-donnees="onNouvellesDonnees" />
 

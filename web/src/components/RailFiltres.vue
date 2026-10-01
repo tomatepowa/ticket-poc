@@ -72,15 +72,20 @@ function choisirTri(code) {
   } catch {}
 }
 
+// Les établissements cochés restent en tête de liste, pour voir d'un coup d'œil le filtre.
 const etablissementsTries = computed(() => {
   const parNom = (a, b) => a.nom.localeCompare(b.nom, "fr");
+  const cochesEnTete = (a, b) => coches.value.has(b.id) - coches.value.has(a.id);
   const liste = [...props.referentiels.etablissements];
-  if (tri.value === "alpha") return liste.sort(parNom);
+  if (tri.value === "alpha") return liste.sort((a, b) => cochesEnTete(a, b) || parNom(a, b));
   // Volume décroissant ; à égalité, l'autre compteur puis le nom.
   const autre = tri.value === "moi" ? "groupes" : "moi";
   return liste.sort(
     (a, b) =>
-      volume(b.id)[tri.value] - volume(a.id)[tri.value] || volume(b.id)[autre] - volume(a.id)[autre] || parNom(a, b)
+      cochesEnTete(a, b) ||
+      volume(b.id)[tri.value] - volume(a.id)[tri.value] ||
+      volume(b.id)[autre] - volume(a.id)[autre] ||
+      parNom(a, b)
   );
 });
 
@@ -188,7 +193,7 @@ function changerTheme() {
             v-for="e in etablissementsTries"
             :key="e.id"
             class="etab-item"
-            :class="{ 'is-vide': !volume(e.id).groupes && !volume(e.id).moi }"
+            :class="{ 'is-vide': !volume(e.id).groupes && !volume(e.id).moi, 'is-coche': coches.has(e.id) }"
           >
             <input type="checkbox" :checked="coches.has(e.id)" @change="basculerEtablissement(e.id)" />
             <span class="etab-nom" :title="e.nom">{{ e.nom }}</span>
