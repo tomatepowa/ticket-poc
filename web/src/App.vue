@@ -105,8 +105,10 @@ async function rafraichir() {
   stats.value = s;
 }
 
-function filtrer(changements) {
+// message : confirmation affichée quand le filtre vient d'un clic dans la liste.
+function filtrer(changements, message) {
   Object.assign(filtres, changements);
+  if (message) toast(message);
   rafraichir().catch((err) => toast(err.message));
 }
 
@@ -253,8 +255,12 @@ function onKeydown(e) {
       <TableTickets
         :tickets="tickets"
         :selectionnable="moi.profil !== 'VALIDEUR'"
+        :filtres="filtres"
+        :vues="vues"
+        :profil="moi.profil"
         @ouvrir="ouvrirDepuisListe"
         @desaffecter="desaffecterLot"
+        @filtrer="filtrer"
       />
     </main>
   </div>

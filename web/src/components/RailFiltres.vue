@@ -1,6 +1,6 @@
 <script setup>
 // Rail de gauche : vues, filtres, utilisateur connecte, theme.
-import { computed, ref } from "vue";
+import { computed, ref, watch } from "vue";
 import { PROFIL_LABEL, debounce, initiales } from "../outils.js";
 
 const props = defineProps({
@@ -25,6 +25,13 @@ const STATUTS = [
 
 const recherche = ref(props.filtres.q);
 const filtrerRecherche = debounce((q) => emit("filtrer", { q }), 250);
+// Recherche posée depuis la liste (clic sur un intervenant) : le champ suit.
+watch(
+  () => props.filtres.q,
+  (q) => {
+    if (q !== recherche.value) recherche.value = q;
+  }
+);
 
 // ---------- Établissements : plusieurs cochés possibles, avec leur volume ----------
 // filtres.etablissement = "1,3,12" (vide = tous).

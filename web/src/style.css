@@ -1,22 +1,24 @@
 /* ---------- Tokens ---------- */
 /* Toutes les couleurs passent par ces variables : le mode sombre ne fait que
-   les redefinir (via la preference systeme, ou le bouton du rail). */
+   les redefinir (via la preference systeme, ou le bouton du rail).
+   Theme clair : textes au moins 4,5:1 sur leur fond (WCAG AA), cartes et
+   pastilles nettement detachees du fond de page. */
 :root {
   color-scheme: light;
 
-  --bg: #F3F5F4;
+  --bg: #E6EBE9;
   --surface: #FFFFFF;
-  --surface-2: #F7F9F8;
-  --hover: #EEF3F1;
-  --ink: #17201E;
-  --ink-soft: #56615D;
-  --ink-faint: #8A938F;
-  --line: #E1E6E3;
-  --line-strong: #CCD4D0;
+  --surface-2: #EDF1EF;
+  --hover: #E3EBE8;
+  --ink: #111917;
+  --ink-soft: #48534F;
+  --ink-faint: #5F6A66;
+  --line: #D3DBD7;
+  --line-strong: #B5C0BB;
 
   --accent: #2D6A6F;
-  --accent-strong: #204E52;
-  --accent-soft: #E2EEED;
+  --accent-strong: #183F43;
+  --accent-soft: #D0E5E3;
   --on-accent: #FFFFFF;
 
   --rail-bg: #15211F;
@@ -26,19 +28,19 @@
   --rail-field: #1D2B28;
 
   /* Statuts : texte + fond teinte */
-  --st-ouvert: #B03F3F;      --st-ouvert-bg: #FBE9E9;
-  --st-encours: #95561A;     --st-encours-bg: #FBEFDF;
-  --st-attente: #4F5E6B;     --st-attente-bg: #EAEEF2;
-  --st-resolu: #3A6A47;      --st-resolu-bg: #E3F0E6;
-  --st-ferme: #68716E;       --st-ferme-bg: #ECEFEE;
+  --st-ouvert: #A12D2D;      --st-ouvert-bg: #F8D9D9;
+  --st-encours: #86470D;     --st-encours-bg: #F6E0C2;
+  --st-attente: #3D4C5A;     --st-attente-bg: #DBE2EA;
+  --st-resolu: #2B5C38;      --st-resolu-bg: #D2E8D8;
+  --st-ferme: #535C59;       --st-ferme-bg: #E0E5E3;
 
   /* Priorites */
-  --p1: #C04545;
-  --p2: #C47A2C;
+  --p1: #B23434;
+  --p2: #B86A1C;
   --p3: #2D6A6F;
-  --p4: #9AA3A0;
+  --p4: #6F7A76;
 
-  --shadow-sm: 0 1px 2px rgba(20, 30, 28, 0.05);
+  --shadow-sm: 0 1px 2px rgba(20, 30, 28, 0.07), 0 2px 8px rgba(20, 30, 28, 0.05);
   --shadow-lg: -12px 0 32px rgba(20, 30, 28, 0.12);
   --overlay: rgba(15, 22, 20, 0.35);
 
@@ -927,6 +929,31 @@ table.tickets tr.needs-action td:first-child { box-shadow: inset 3px 0 0 var(--a
 .affecte-moi { background: var(--accent); color: var(--on-accent); font-weight: 600; }
 .affecte-tiers { background: var(--surface-2); border-color: var(--line); color: var(--ink-soft); }
 .affecte-aucun { border: 1px dashed var(--st-encours); color: var(--st-encours); }
+/* Groupe, affectation, etablissement cliquables dans la liste : appliquent le filtre du rail */
+button.filtre-cellule {
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  text-align: left;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: box-shadow 0.1s ease, filter 0.1s ease;
+}
+button.badge-equipe.filtre-cellule { border: none; }
+button.affecte-aucun.filtre-cellule { background: transparent; }
+button.filtre-cellule.sub {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 12.5px;
+  color: var(--ink-faint);
+}
+button.filtre-cellule:hover { box-shadow: 0 0 0 1.5px var(--accent); }
+button.filtre-cellule.sub:hover { box-shadow: none; color: var(--accent); text-decoration: underline; }
+button.filtre-cellule.is-actif { box-shadow: 0 0 0 2px var(--accent); }
+button.filtre-cellule.sub.is-actif { box-shadow: none; color: var(--accent-strong); font-weight: 600; text-decoration: underline; }
+button.filtre-cellule:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 table.tickets tbody tr.ligne-moi { background: color-mix(in srgb, var(--accent-soft) 55%, transparent); }
 table.tickets tbody tr.ligne-moi:hover { background: var(--hover); }
 

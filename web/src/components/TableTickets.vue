@@ -3,14 +3,88 @@
 // laisse le navigateur ouvrir le lien direct dans un nouvel onglet.
 // En-tetes cliquables : tri croissant, puis decroissant au deuxieme clic.
 // Selection multiple (equipes support) : remettre des tickets affectes dans leur groupe.
+// Groupe, affectation et etablissement sont cliquables : ils appliquent le filtre
+// correspondant du rail (un second clic le retire).
 import { computed, ref, watch } from "vue";
 import { PRIORITE_LABEL, formatCourt } from "../outils.js";
 
 const props = defineProps({
   tickets: { type: Array, required: true },
   selectionnable: { type: Boolean, default: false },
+  filtres: { type: Object, required: true },
+  vues: { type: Array, required: true },
+  profil: { type: String, required: true },
 });
-const emit = defineEmits(["ouvrir", "desaffecter"]);
+const emit = defineEmits(["ouvrir", "desaffecter", "filtrer"]);
+
+// ---------- Filtres depuis la liste ----------
+
+const aVue = (code) => props.vues.some((v) => v.code === code);
+const libelleVue = (code) => props.vues.find((v) => v.code === code)?.label || code;
+const etablissementsCoches = computed(() => String(props.filtres.etablissement || "").split(",").filter(Boolean).map(Number));
+
+// Chaque filtre : possible pour ce profil ?, actif ?, changement qui l'active / le retire.
+const FILTRES = {
+  groupe: (t) => ({
+    possible: props.profil !== "VALIDEUR" && Boolean(t.groupe),
+    actif: props.filtres.groupe === String(t.groupe?.id),
+    activer: { groupe: String(t.groupe?.id) },
+    retirer: { groupe: "" },
+    libelle: `groupe « ${t.groupe?.nom} »`,
+  }),
+  // Moi / Non affecté : la vue correspondante, si ce profil l'a.
+  moi: () => ({
+    possible: aVue("moi"),
+    actif: props.filtres.vue === "moi",
+    activer: { vue: "moi" },
+    retirer: { vue: props.vues[0].code },
+    libelle: `vue « ${libelleVue("moi")} »`,
+  }),
+  aucun: () => ({
+    possible: aVue("non_affectes"),
+    actif: props.filtres.vue === "non_affectes",
+    activer: { vue: "non_affectes" },
+    retirer: { vue: props.vues[0].code },
+    libelle: `vue « ${libelleVue("non_affectes")} »`,
+  }),
+  // Un collègue : la recherche porte aussi sur le nom de l'intervenant.
+  intervenant: (t) => ({
+    possible: Boolean(t.intervenant?.nom),
+    actif: props.filtres.q === t.intervenant?.nom,
+    activer: { q: t.intervenant?.nom },
+    retirer: { q: "" },
+    libelle: `tickets de ${t.intervenant?.nom}`,
+  }),
+  etablissement: (t) => {
+    const id = t.etablissement?.id;
+    const coches = etablissementsCoches.value;
+    return {
+      possible: Boolean(id),
+      actif: coches.includes(id),
+      activer: { etablissement: [...coches, id].join(",") },
+      retirer: { etablissement: coches.filter((x) => x !== id).join(",") },
+      libelle: `établissement « ${t.etablissement?.nom} »`,
+    };
+  },
+};
+
+const filtre = (type, t) => FILTRES[type](t);
+const titreFiltre = (type, t) => {
+  const f = filtre(type, t);
+  return f.actif ? `Retirer le filtre : ${f.libelle}` : `Filtrer : ${f.libelle}`;
+};
+
+function appliquer(type, t) {
+  const f = filtre(type, t);
+  emit("filtrer", f.actif ? f.retirer : f.activer, f.actif ? `Filtre retiré : ${f.libelle}` : `Filtre : ${f.libelle}`);
+}
+
+// Affectation de l'etape en cours : [type de filtre, classe, texte affiche]
+const AFFECTATION = {
+  MOI: ["moi", "affecte-moi", () => "Moi"],
+  TIERS: ["intervenant", "affecte-tiers", (t) => t.intervenant?.nom],
+  AUCUN: ["aucun", "affecte-aucun", () => "Non affecté"],
+};
 
 // ---------- Tri ----------
 
@@ -104,7 +178,7 @@ function desaffecter() {
 }
 
 function onClic(e, t) {
-  if (e.target.closest(".col-selection")) return;
+  if (e.target.closest(".col-selection, .filtre-cellule")) return;
   if (e.target.closest("a") && (e.ctrlKey || e.metaKey || e.shiftKey || e.button === 1)) return;
   e.preventDefault();
   emit("ouvrir", t.id);
@@ -182,15 +256,38 @@ function onClic(e, t) {
           </td>
           <td class="two-lines">
             <span>{{ t.demandeur?.nom || "—" }}</span>
-            <span class="sub" :title="t.etablissement?.nom">{{ t.etablissement?.nom || "" }}</span>
+            <button
+              v-if="filtre('etablissement', t).possible"
+              type="button"
+              class="sub filtre-cellule"
+              :class="{ 'is-actif': filtre('etablissement', t).actif }"
+              :title="titreFiltre('etablissement', t)"
+              @click="appliquer('etablissement', t)"
+            >{{ t.etablissement.nom }}</button>
           </td>
           <td class="two-lines">
-            <span v-if="t.groupe" class="badge-equipe" :title="t.groupe.nom">{{ t.groupe.nom }}</span>
+            <button
+              v-if="filtre('groupe', t).possible"
+              type="button"
+              class="badge-equipe filtre-cellule"
+              :class="{ 'is-actif': filtre('groupe', t).actif }"
+              :title="titreFiltre('groupe', t)"
+              @click="appliquer('groupe', t)"
+            >{{ t.groupe.nom }}</button>
+            <span v-else-if="t.groupe" class="badge-equipe" :title="t.groupe.nom">{{ t.groupe.nom }}</span>
             <span v-else class="muted">—</span>
             <!-- Affectation de l'étape en cours : à moi / à un autre / personne -->
-            <span v-if="t.affectation === 'MOI'" class="affecte affecte-moi">Moi</span>
-            <span v-else-if="t.affectation === 'TIERS'" class="affecte affecte-tiers">{{ t.intervenant?.nom }}</span>
-            <span v-else-if="t.affectation === 'AUCUN'" class="affecte affecte-aucun">Non affecté</span>
+            <template v-if="AFFECTATION[t.affectation]">
+              <button
+                v-if="filtre(AFFECTATION[t.affectation][0], t).possible"
+                type="button"
+                class="affecte filtre-cellule"
+                :class="[AFFECTATION[t.affectation][1], { 'is-actif': filtre(AFFECTATION[t.affectation][0], t).actif }]"
+                :title="titreFiltre(AFFECTATION[t.affectation][0], t)"
+                @click="appliquer(AFFECTATION[t.affectation][0], t)"
+              >{{ AFFECTATION[t.affectation][2](t) }}</button>
+              <span v-else class="affecte" :class="AFFECTATION[t.affectation][1]">{{ AFFECTATION[t.affectation][2](t) }}</span>
+            </template>
           </td>
           <td>
             <span class="pill" :class="`statut-${t.statut}`">{{ t.etape.label }}</span>
