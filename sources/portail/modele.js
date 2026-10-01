@@ -53,6 +53,13 @@ function estInactif(rec, champ) {
   return Boolean(v) && new Date(v).getTime() <= Date.now();
 }
 
+// Prefixes de numero de toute longueur ("I", "INC"...) : le plus long qui correspond.
+const PREFIXES_NUMERO = Object.keys(cfg.typeDepuisNumero).sort((a, b) => b.length - a.length);
+function typeDepuisNumero(numero) {
+  const p = PREFIXES_NUMERO.find((x) => String(numero).startsWith(x));
+  return p ? cfg.typeDepuisNumero[p] : "INCIDENT";
+}
+
 function typeDepuisChemin(chemin) {
   const entree = Object.entries(cfg.typeDepuisCheminCatalogue).find(([prefixe]) => String(chemin || "").startsWith(prefixe));
   return entree ? entree[1] : "INCIDENT";
@@ -151,7 +158,7 @@ function analyser(req, actions) {
     groupe: refGroupe && idGroupe(refGroupe) ? { id: idGroupe(refGroupe), nom: nomGroupe(refGroupe) } : null,
     intervenant: principale ? personne(principale.DONE_BY) : null,
     valideur: validation ? personne(validation.DONE_BY) : null,
-    type: cfg.typeDepuisNumero[String(req.RFC_NUMBER)[0]] || "INCIDENT",
+    type: typeDepuisNumero(req.RFC_NUMBER),
   };
 }
 

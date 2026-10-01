@@ -28,7 +28,7 @@ module.exports = {
   statutAnnulation: "Annulé", // statut de cloture utilise quand le demandeur annule
   statutsSortie: ["Refusé", "Annulé"], // fins anticipees : barre de progression grisee
 
-  // Type de ticket d'apres le prefixe du numero EV.
+  // Type de ticket d'apres le prefixe du numero EV (une ou plusieurs lettres : "I", "INC"...).
   typeDepuisNumero: { I: "INCIDENT", S: "DEMANDE" },
   // Type d'une entree de catalogue d'apres le debut de son chemin.
   typeDepuisCheminCatalogue: { "Incidents/": "INCIDENT", "Demandes/": "DEMANDE" },

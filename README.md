@@ -76,15 +76,34 @@ npm test
 ```
 
 Lance les tests du dossier `tests/` (outil de test intégré à Node, rien à
-installer, ni base ni EV nécessaires). Ils vérifient les règles du portail :
-profils d'après les groupes EV, qui voit quel ticket, boutons proposés à
-chacun, étapes et statuts affichés, contrôle des formulaires, détection d'un
-paramétrage EV inconnu. Si on modifie `correspondance.js` pour la vraie
-instance EV, certains tests (noms de statuts, de groupes) seront à adapter.
+installer). Deux familles :
+
+- **Règles du portail**, sans base ni EV : profils d'après les groupes EV, qui
+  voit quel ticket, boutons proposés à chacun, étapes et statuts affichés,
+  contrôle des formulaires, détection d'un paramétrage EV inconnu, et
+  garde-fous sur `correspondance.js` (`tests/correspondance.test.js`).
+- **PostgreSQL** (`tests/postgres-*.test.js`) : migrations, copie locale des
+  tickets, sessions, vues du pôle BI, synchro EV → base (incrémentale,
+  complète, purge, panne d'EV), puis listes, filtres, stats et actions du
+  portail de bout en bout, sur un faux EV en mémoire (`tests/faux-ev.js`).
+
+Les tests PostgreSQL utilisent une base **dédiée**, `TEST_DATABASE_URL` (voir
+`.env.exemple`), vidée à chaque exécution : son nom doit contenir « test »,
+et elle est créée automatiquement dans le PostgreSQL du poste
+(`docker compose up -d base`). Sans elle, ces tests sont ignorés avec un
+message, les autres tournent.
+
+**Adapter à la vraie instance EV** : les tests ne contiennent aucun nom de
+statut, de type d'action ou de groupe ; ils les lisent dans
+`correspondance.js` (`tests/fabrique.js`). Après l'adaptation, `npm test`
+dit ce qui est incohérent dans le paramétrage ; une notion absente (par
+exemple pas d'étape de confirmation) saute les tests concernés.
 
 **Intégration continue** (`.github/workflows/ci.yml`) : à chaque push, GitHub
-lance `npm test` et `npm run build` sous Node 20 et 22. Résultat dans l'onglet
-« Actions » du dépôt, et en coche verte / croix rouge à côté de chaque commit.
+lance `npm test` (avec une base PostgreSQL jetable) et `npm run build` sous
+Node 20 et 22. Résultat dans l'onglet « Actions » du dépôt, et en coche verte
+/ croix rouge à côté de chaque commit. En CI, les tests PostgreSQL ne sont
+jamais ignorés : base absente = échec.
 
 ## Architecture
 

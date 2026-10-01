@@ -18,6 +18,22 @@ jobs:
       matrix:
         # Versions de Node.js acceptees en production (installation/windows).
         node: [20, 22]
+    # Base PostgreSQL jetable pour les tests (meme version que docker-compose.yml).
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: portail
+          POSTGRES_PASSWORD: portail_test
+          POSTGRES_DB: portail_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U portail"
+          --health-interval 5s
+          --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgres://portail:portail_test@localhost:5432/portail_test
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
