@@ -48,6 +48,14 @@ const FILTRES = {
     retirer: { q: "" },
     libelle: `tickets de ${t.intervenant?.nom}`,
   }),
+  // Un demandeur : tous ses tickets (la recherche porte aussi sur le demandeur).
+  demandeur: (t) => ({
+    possible: Boolean(t.demandeur?.nom),
+    actif: props.filtres.q === t.demandeur?.nom,
+    activer: { q: t.demandeur?.nom },
+    retirer: { q: "" },
+    libelle: `tickets demandés par ${t.demandeur?.nom}`,
+  }),
   etablissement: (t) => {
     const id = t.etablissement?.id;
     const coches = etablissementsCoches.value;
@@ -199,7 +207,15 @@ function onClic(e, t) {
             <span class="sub">{{ t.type_label }} · {{ t.catalogue.libelle }}</span>
           </td>
           <td class="two-lines">
-            <span>{{ t.demandeur?.nom || "—" }}</span>
+            <button
+              v-if="filtre('demandeur', t).possible"
+              type="button"
+              class="nom-filtre filtre-cellule"
+              :class="{ 'is-actif': filtre('demandeur', t).actif }"
+              :title="titreFiltre('demandeur', t)"
+              @click="appliquer('demandeur', t)"
+            >{{ t.demandeur.nom }}</button>
+            <span v-else>—</span>
             <button
               v-if="filtre('etablissement', t).possible"
               type="button"
