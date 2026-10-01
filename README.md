@@ -28,6 +28,9 @@ npm run dev
 Une seule commande : elle lance Docker Desktop s'il est arrêté, démarre le
 conteneur PostgreSQL, attend la base, puis démarre le portail (Ctrl+C pour
 l'arrêter). La configuration vient du fichier `.env` (ignoré par git).
+Le portail redémarre tout seul quand le code serveur change (`server.js`,
+`auth.js`, `sources/`) ; le front (`web/`) est rechargé à chaud dans le
+navigateur.
 
 Première fois sur un poste :
 

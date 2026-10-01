@@ -4,7 +4,9 @@
 //  2. si DEV_CONTENEUR_PG est defini : lance Docker Desktop s'il est arrete,
 //     puis demarre ce conteneur PostgreSQL ;
 //  3. attend que la base reponde ;
-//  4. demarre le portail (Ctrl+C pour l'arreter).
+//  4. demarre le portail (Ctrl+C pour l'arreter), redemarre automatiquement quand
+//     le code du serveur change (server.js, auth.js, sources/) ; le front (web/)
+//     est recharge a chaud par Vite.
 //
 // En production, c'est "npm start" (service Windows) : ce script ne sert qu'aux postes de dev.
 
@@ -80,7 +82,15 @@ async function attendreBase() {
   info(`Base prête. Portail : http://localhost:${process.env.PORT || 3000} (Ctrl+C pour arrêter)`);
 
   // ---------- 4. Portail ----------
-  const portail = spawn(process.execPath, ["server.js"], { cwd: racine, stdio: "inherit", env: process.env });
+  // Redemarrage automatique quand le code serveur change. Chemins surveilles
+  // limites au code du portail : avec un simple --watch, le fichier temporaire
+  // de configuration que Vite ecrit a chaque demarrage relancerait le serveur en
+  // boucle. --watch-path n'existe que sous Windows et macOS : ailleurs, pas de
+  // redemarrage automatique (relancer npm run dev apres un changement serveur).
+  const surveiller = ["win32", "darwin"].includes(process.platform)
+    ? ["server.js", "auth.js", "sources"].map((p) => `--watch-path=${p}`).concat("--watch-preserve-output")
+    : [];
+  const portail = spawn(process.execPath, [...surveiller, "server.js"], { cwd: racine, stdio: "inherit", env: process.env });
   const stop = () => portail.kill();
   process.on("SIGINT", stop);
   process.on("SIGTERM", stop);
