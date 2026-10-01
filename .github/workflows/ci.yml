@@ -1,0 +1,29 @@
+# Integration continue : a chaque push et a chaque pull request, GitHub installe
+# le projet, lance les tests (npm test) et construit le front (npm run build).
+# Resultat visible dans l'onglet "Actions" du depot, et en coche verte / croix
+# rouge a cote de chaque commit.
+# Gratuit : depot public illimite ; depot prive, 2 000 minutes/mois incluses
+# (une execution prend environ 1 minute par version de Node).
+
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        # Versions de Node.js acceptees en production (installation/windows).
+        node: [20, 22]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run build

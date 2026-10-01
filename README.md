@@ -69,6 +69,23 @@ lancer `npm run build` avant (l'image Docker le fait).
 
 Démo complète sous Docker : `docker compose up --build` (portail + PostgreSQL).
 
+## Tests
+
+```bash
+npm test
+```
+
+Lance les tests du dossier `tests/` (outil de test intégré à Node, rien à
+installer, ni base ni EV nécessaires). Ils vérifient les règles du portail :
+profils d'après les groupes EV, qui voit quel ticket, boutons proposés à
+chacun, étapes et statuts affichés, contrôle des formulaires, détection d'un
+paramétrage EV inconnu. Si on modifie `correspondance.js` pour la vraie
+instance EV, certains tests (noms de statuts, de groupes) seront à adapter.
+
+**Intégration continue** (`.github/workflows/ci.yml`) : à chaque push, GitHub
+lance `npm test` et `npm run build` sous Node 20 et 22. Résultat dans l'onglet
+« Actions » du dépôt, et en coche verte / croix rouge à côté de chaque commit.
+
 ## Architecture
 
 ```
