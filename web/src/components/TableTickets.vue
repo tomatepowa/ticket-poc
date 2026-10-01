@@ -3,8 +3,8 @@
 // laisse le navigateur ouvrir le lien direct dans un nouvel onglet.
 // En-tetes cliquables : tri croissant, puis decroissant au deuxieme clic.
 // Groupe, affectation et etablissement sont cliquables : ils appliquent le filtre
-// correspondant (un second clic le retire). La legende au-dessus de la liste et les
-// pastilles d'affectation chargent la vue : a moi, a personne, a un autre.
+// correspondant (un second clic le retire) ; les pastilles d'affectation chargent
+// la vue : a moi, a personne, a un autre.
 import { computed, ref } from "vue";
 import { PRIORITE_LABEL, formatCourt } from "../outils.js";
 
@@ -83,17 +83,12 @@ function appliquer(type, t) {
 }
 
 // Affectation de l'etape en cours : [type de filtre, classe, texte affiche]
-// (le nom d'un collegue filtre sur ce collegue ; la legende, sur tous les "autres")
+// (le nom d'un collegue filtre sur ce collegue)
 const AFFECTATION = {
   MOI: ["MOI", "affecte-moi", () => "Moi"],
   TIERS: ["intervenant", "affecte-tiers", (t) => t.intervenant?.nom],
   AUCUN: ["AUCUN", "affecte-aucun", () => "Non affecté"],
 };
-const LEGENDE = [
-  ["AUCUN", "affecte-aucun", "Non affecté"],
-  ["MOI", "affecte-moi", "Moi"],
-  ["TIERS", "affecte-tiers", "Affecté à un autre"],
-];
 
 // ---------- Tri ----------
 
@@ -165,22 +160,6 @@ function onClic(e, t) {
 </script>
 
 <template>
-  <div class="barre-liste">
-    <div class="legende-affectation" role="group" aria-label="Filtrer par affectation">
-      <template v-for="[code, classe, texte] in LEGENDE" :key="code">
-        <button
-          v-if="filtre(code).possible"
-          type="button"
-          class="affecte filtre-cellule"
-          :class="[classe, { 'is-actif': filtre(code).actif }]"
-          :aria-pressed="filtre(code).actif"
-          :title="titreFiltre(code)"
-          @click="appliquer(code)"
-        >{{ texte }}</button>
-        <span v-else class="affecte" :class="classe">{{ texte }}</span>
-      </template>
-    </div>
-  </div>
   <section class="table-wrap">
     <table class="tickets">
       <thead>
