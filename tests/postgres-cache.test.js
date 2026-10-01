@@ -70,6 +70,24 @@ testPg("un ticket enregistré se relit à l'identique (ticket EV + actions dans 
   assert.equal(await cache.lire("INCONNU"), null);
 });
 
+testPg("description HTML avec captures : copie allégée, texte seul pour le BI, titre de repli", async () => {
+  const image = "data:image/png;base64," + "iVBORw0KGgo".repeat(5000);
+  const description = `<p>L&#39;écran affiche :</p><p><img src="${image}"></p><p>Merci</p>`;
+  const commentaire = `<p>Vu, capture :</p><img src="${image}">`;
+  await charger(F.ticket(F.incident(1), STATUT.enCours, { TITLE: "", DESCRIPTION: description }), [
+    { ...F.action(TYPE.commentaire, { fin: F.ilYa(1) }), COMMENT: commentaire },
+  ]);
+  const lu = await cache.lire(F.incident(1));
+  assert.ok(!lu.req.DESCRIPTION.includes("base64"), "les images restent dans EV, pas dans la copie locale");
+  assert.ok(!lu.actions[0].COMMENT.includes("base64"));
+  assert.match(lu.req.DESCRIPTION, /<p>Merci<\/p>/, "la mise en page est gardée");
+
+  const t = await ligne("SELECT titre, description FROM bi.tickets");
+  assert.equal(t.description, "L'écran affiche :\n[image]\nMerci");
+  assert.equal(t.titre, "L'écran affiche :", "titre de repli : première ligne du texte, sans balise");
+  assert.equal((await ligne("SELECT commentaire FROM bi.actions")).commentaire, "Vu, capture :\n[image]");
+});
+
 testPg("colonnes à plat calculées par le portail (statut, étape, groupe, intervenant)", async () => {
   await charger(F.ticket(F.incident(1), STATUT.enCours), [F.action(TYPE.traitement, { faitPar: empMarc })]);
   const t = await ligne("SELECT * FROM portail.tickets");

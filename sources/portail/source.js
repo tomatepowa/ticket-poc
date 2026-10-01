@@ -22,6 +22,15 @@ const { creerSynchro } = require("./synchro");
 const { ErreurSource } = require("../erreurs");
 
 const TERMINES = ["RESOLU", "CLOTURE"];
+// Type MIME d'apres l'extension (pieces jointes : l'API EV ne le donne pas).
+const TYPES_FICHIER = {
+  png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", gif: "image/gif", webp: "image/webp", bmp: "image/bmp", svg: "image/svg+xml",
+  pdf: "application/pdf", txt: "text/plain", log: "text/plain", csv: "text/csv",
+  doc: "application/msword", docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  xls: "application/vnd.ms-excel", xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  msg: "application/vnd.ms-outlook", eml: "message/rfc822", zip: "application/zip",
+};
+const typeFichier = (nom) => TYPES_FICHIER[String(nom || "").split(".").pop().toLowerCase()] || "application/octet-stream";
 // Filtres de statut de la liste : "" (tous), actifs, inactifs (résolus et clos).
 const STATUTS_LISTE = ["", "ACTIFS", "INACTIFS"];
 const JOURS_CLOS_AFFICHES = 30; // tickets clos visibles dans les listes
@@ -252,9 +261,18 @@ function creerSource(client) {
     });
   }
 
+  // Pièces jointes d'un ticket (lues dans EV) : [{ id, nom, type }]. Le type est
+  // deviné d'après l'extension (l'API EV ne le donne pas dans la liste).
+  async function piecesJointes(rfc) {
+    if (!client.getDocuments) return [];
+    const { records } = await client.getDocuments(rfc);
+    return records.map((d) => ({ id: String(d.DOCUMENT_ID), nom: d.DOCUMENT || d.NAME || "Pièce jointe", type: typeFichier(d.DOCUMENT) }));
+  }
+
   async function ticketComplet(u, { ctx, origine, lu_le, erreur_ev }) {
     let actions = [];
     let formulaire = null;
+    let pieces = [];
     // Si EV est injoignable, on affiche la copie mais on ne propose aucune action.
     if (origine === "ev") {
       actions = await Promise.all(
@@ -266,6 +284,8 @@ function creerSource(client) {
           ...(a.parametre === "membre" ? { membres: await collegues(u, ctx, a.op.group_id) } : {}),
         }))
       );
+      // Une pièce jointe illisible ne doit pas empêcher d'afficher le ticket.
+      pieces = await piecesJointes(ctx.req.RFC_NUMBER).catch(() => []);
       if (client.getQuestionResults) {
         const resultats = (await client.getQuestionResults(ctx.req.REQUEST_ID)).records;
         if (resultats.length) {
@@ -279,6 +299,7 @@ function creerSource(client) {
     return {
       ...M.versTicket(ctx, u, await titresCatalogue()),
       formulaire,
+      pieces_jointes: pieces,
       historique: M.historique(ctx),
       actions,
       progression: M.progression(ctx),
@@ -420,6 +441,17 @@ function creerSource(client) {
 
     async getTicket(u, rfc) {
       return ticketComplet(u, await contexteVisible(u, rfc));
+    },
+
+    // Fichier d'une pièce jointe, mêmes droits que le ticket : { nom, type, contenu }.
+    async getPieceJointe(u, rfc, documentId) {
+      await contexteVisible(u, rfc);
+      if (!client.getDocument) throw new ErreurSource(404, "Pièce jointe introuvable");
+      const doc = await client.getDocument(rfc, documentId);
+      const nom = doc.nom || (await piecesJointes(rfc)).find((p) => p.id === String(documentId))?.nom || "piece-jointe";
+      // Type deduit du nom si EV ne le donne pas (ou le donne generique).
+      const type = doc.type && doc.type !== "application/octet-stream" ? doc.type : typeFichier(nom);
+      return { nom, type, contenu: doc.contenu };
     },
 
     // Saisie par le support, pour le compte d'un demandeur (appel, passage, mail...).

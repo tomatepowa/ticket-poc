@@ -12,6 +12,7 @@
 
 const base = require("./base");
 const M = require("./modele");
+const { alleger, texteSeul } = require("./texte");
 
 const date = (v) => (v && !Number.isNaN(new Date(v).getTime()) ? new Date(v).toISOString() : null);
 const nomPersonne = (ref) => {
@@ -26,13 +27,17 @@ async function initialiser() {
 
 // Enregistre (ou remplace) un ticket et TOUTES ses actions.
 // resume : colonnes a plat calculees par le portail (voir synchro.resumer()).
-async function enregistrer(req, actions, resume, maintenant = new Date()) {
+// Descriptions et commentaires : HTML sans les images integrees (elles restent
+// dans EV) + version texte seul (pole BI).
+async function enregistrer(reqEV, actionsEV, resume, maintenant = new Date()) {
+  const req = { ...reqEV, DESCRIPTION: alleger(reqEV.DESCRIPTION) };
+  const actions = actionsEV.map((a) => ({ ...a, COMMENT: alleger(a.COMMENT) }));
   await base.transaction(async (c) => {
     await c.query(
       `INSERT INTO portail.tickets (numero, request_id, type, titre, statut, statut_ev, etape, priorite, catalogue,
          catalogue_chemin, etablissement_id, etablissement, groupe_id, groupe, intervenant_id, intervenant,
-         demandeur_id, demandeur, valideur, date_creation, date_maj, echeance, ferme, data, synchro)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25)
+         demandeur_id, demandeur, valideur, date_creation, date_maj, echeance, ferme, data, synchro, description_texte)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26)
        ON CONFLICT (numero) DO UPDATE SET request_id = EXCLUDED.request_id, type = EXCLUDED.type,
          titre = EXCLUDED.titre, statut = EXCLUDED.statut, statut_ev = EXCLUDED.statut_ev, etape = EXCLUDED.etape,
          priorite = EXCLUDED.priorite, catalogue = EXCLUDED.catalogue, catalogue_chemin = EXCLUDED.catalogue_chemin,
@@ -40,7 +45,8 @@ async function enregistrer(req, actions, resume, maintenant = new Date()) {
          groupe_id = EXCLUDED.groupe_id, groupe = EXCLUDED.groupe, intervenant_id = EXCLUDED.intervenant_id,
          intervenant = EXCLUDED.intervenant, demandeur_id = EXCLUDED.demandeur_id, demandeur = EXCLUDED.demandeur,
          valideur = EXCLUDED.valideur, date_creation = EXCLUDED.date_creation, date_maj = EXCLUDED.date_maj,
-         echeance = EXCLUDED.echeance, ferme = EXCLUDED.ferme, data = EXCLUDED.data, synchro = EXCLUDED.synchro`,
+         echeance = EXCLUDED.echeance, ferme = EXCLUDED.ferme, data = EXCLUDED.data, synchro = EXCLUDED.synchro,
+         description_texte = EXCLUDED.description_texte`,
       [
         req.RFC_NUMBER,
         req.REQUEST_ID ?? null,
@@ -67,18 +73,19 @@ async function enregistrer(req, actions, resume, maintenant = new Date()) {
         resume.ferme,
         req,
         maintenant.toISOString(),
+        texteSeul(reqEV.DESCRIPTION) || null,
       ]
     );
     await c.query("DELETE FROM portail.actions WHERE numero = $1", [req.RFC_NUMBER]);
     for (const a of actions) {
       await c.query(
         `INSERT INTO portail.actions (action_id, numero, type_action, en_cours, group_id, groupe, done_by_id, auteur,
-           debut, fin, choix, data)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+           debut, fin, choix, data, commentaire_texte)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
          ON CONFLICT (action_id) DO UPDATE SET numero = EXCLUDED.numero, type_action = EXCLUDED.type_action,
            en_cours = EXCLUDED.en_cours, group_id = EXCLUDED.group_id, groupe = EXCLUDED.groupe,
            done_by_id = EXCLUDED.done_by_id, auteur = EXCLUDED.auteur, debut = EXCLUDED.debut, fin = EXCLUDED.fin,
-           choix = EXCLUDED.choix, data = EXCLUDED.data`,
+           choix = EXCLUDED.choix, data = EXCLUDED.data, commentaire_texte = EXCLUDED.commentaire_texte`,
         [
           String(a.ACTION_ID),
           req.RFC_NUMBER,
@@ -92,6 +99,7 @@ async function enregistrer(req, actions, resume, maintenant = new Date()) {
           date(a.END_DATE_UT),
           a.CHOICE ?? null,
           a,
+          texteSeul(a.COMMENT) || null,
         ]
       );
     }

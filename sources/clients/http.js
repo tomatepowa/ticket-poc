@@ -130,6 +130,36 @@ module.exports = {
     return appel("PUT", `/requests/${encodeURIComponent(rfc)}`, { body });
   },
 
+  // ---------- Pièces jointes ----------
+
+  // GET /requests/{rfc}/documents : { Documents: [{ DOCUMENT_ID, DOCUMENT (nom), HREF, DDL_HREF }] }
+  // https://docs.easyvista.com : « View the URLs for ticket attachments ».
+  // A VERIFIER : type et taille du fichier ne sont pas dans la reponse documentee.
+  async getDocuments(rfc) {
+    const r = await appel("GET", `/requests/${encodeURIComponent(rfc)}/documents`);
+    return { records: r?.Documents || r?.documents || r?.records || [] };
+  },
+  // GET /requests/{rfc}/documents/{document_id} : le fichier lui-meme.
+  // A VERIFIER : reponse binaire (Content-Type / Content-Disposition) ; la doc
+  // mentionne aussi un parametre encoding=base64.
+  async getDocument(rfc, documentId) {
+    const url = `${base}/requests/${encodeURIComponent(rfc)}/documents/${encodeURIComponent(documentId)}`;
+    let res;
+    try {
+      res = await fetch(url, { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(TIMEOUT_MS) });
+    } catch (err) {
+      throw new ErreurSource(502, `EasyVista injoignable (${err.message})`);
+    }
+    if (res.status === 404) throw new ErreurSource(404, "Pièce jointe introuvable");
+    if (!res.ok) throw new ErreurSource(502, `EasyVista a refusé le téléchargement (HTTP ${res.status})`);
+    const nom = /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(res.headers.get("content-disposition") || "")?.[1];
+    return {
+      nom: nom ? decodeURIComponent(nom) : null,
+      type: res.headers.get("content-type") || "application/octet-stream",
+      contenu: Buffer.from(await res.arrayBuffer()),
+    };
+  },
+
   // ---------- Questionnaires ----------
 
   // POST /requests/without-workflow (EV 2026.1+) : ticket cree sans lancer son workflow.

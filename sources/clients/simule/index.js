@@ -52,6 +52,15 @@ db.exec(`
     choice TEXT
   );
   CREATE INDEX IF NOT EXISTS idx_actions_request ON actions(request_id);
+  CREATE TABLE IF NOT EXISTS documents (
+    document_id TEXT PRIMARY KEY,
+    request_id INTEGER NOT NULL REFERENCES requests(request_id),
+    nom TEXT NOT NULL,
+    type TEXT NOT NULL,
+    contenu BLOB NOT NULL,
+    date TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_documents_request ON documents(request_id);
   CREATE TABLE IF NOT EXISTS question_results (
     request_id INTEGER NOT NULL,
     question_id INTEGER NOT NULL,
@@ -460,6 +469,18 @@ function opMajRequest(rfc, body, date) {
   return { HREF: `${BASE}/requests/${rfc}` };
 }
 
+// Piece jointe : { nom, type, contenu (Buffer ou texte) }. Identifiant facon EV
+// (« 40000_<empreinte> »).
+function opJoindre(rfc, { nom, type, contenu }, date) {
+  const r = ligneRequest(rfc);
+  const octets = Buffer.isBuffer(contenu) ? contenu : Buffer.from(String(contenu));
+  const id = `40000_${require("crypto").createHash("sha256").update(`${rfc}/${nom}/${date.toISOString()}`).update(octets).digest("hex")}`;
+  db.prepare("INSERT OR REPLACE INTO documents (document_id, request_id, nom, type, contenu, date) VALUES (?, ?, ?, ?, ?, ?)").run(
+    id, r.request_id, nom, type || "application/octet-stream", octets, date.toISOString()
+  );
+  return id;
+}
+
 const enTransaction = (fn) => (...args) => db.transaction(() => fn(...args))();
 
 // ---------- Donnees de demo ----------
@@ -493,6 +514,8 @@ function seedDemo() {
         { sansWorkflow: avecReponses }
       );
       const rfc = HREF.split("/").pop();
+      // Pieces jointes deposees avec le ticket (comme POST /requests/{rfc}/documents).
+      (d.pieces || []).forEach((p) => opJoindre(rfc, p, ilYa(d.heures)));
       if (avecReponses) {
         const { request_id } = ligneRequest(rfc);
         Object.entries(d.reponses).forEach(([q, v]) => opReponse(request_id, q, { value: v }, ilYa(d.heures)));
@@ -616,6 +639,26 @@ module.exports = {
     return lien ? formatQuestionnaire(questionnaire(lien[2])) : null;
   },
   // GET /questions-result/{request_id}
+  // GET /requests/{rfc}/documents : { Documents: [{ DOCUMENT_ID, DOCUMENT, HREF, DDL_HREF }] }
+  async getDocuments(rfc) {
+    const r = ligneRequest(rfc);
+    const docs = db.prepare("SELECT document_id, nom FROM documents WHERE request_id = ? ORDER BY date, nom").all(r.request_id);
+    return {
+      records: docs.map((d) => ({
+        DOCUMENT_ID: d.document_id,
+        DOCUMENT: d.nom,
+        HREF: `${BASE}/requests/${rfc}/documents/${d.document_id}`,
+        DDL_HREF: `${BASE}/requests/${rfc}/documents/${d.document_id}`,
+      })),
+    };
+  },
+  // GET /requests/{rfc}/documents/{document_id} : le fichier (nom, type, octets).
+  async getDocument(rfc, documentId) {
+    const r = ligneRequest(rfc);
+    const d = db.prepare("SELECT nom, type, contenu FROM documents WHERE request_id = ? AND document_id = ?").get(r.request_id, String(documentId));
+    if (!d) throw new ErreurSource(404, "Document not found");
+    return { nom: d.nom, type: d.type, contenu: d.contenu };
+  },
   async getQuestionResults(requestId) {
     const lignes = db.prepare("SELECT * FROM question_results WHERE request_id = ? ORDER BY question_id").all(requestId);
     return {
@@ -636,7 +679,7 @@ module.exports = {
 
   // Propre a la simulation (hors interface EV)
   reinitialiserDemo() {
-    db.exec("DELETE FROM question_results; DELETE FROM actions; DELETE FROM requests; DELETE FROM sqlite_sequence;");
+    db.exec("DELETE FROM documents; DELETE FROM question_results; DELETE FROM actions; DELETE FROM requests; DELETE FROM sqlite_sequence;");
     seedDemo();
   },
   fermer() {

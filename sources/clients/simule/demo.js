@@ -8,10 +8,14 @@
 //   ["transferer", login, heures, commentaire, groupe] vers un autre groupe (non affecte)
 //   ["annuler", login, heures, commentaire]          cloture au statut "Annulé"
 // Ces tickets "racontent" la demo ; volume.js en ajoute des centaines d'autres.
+// description : texte simple, ou HTML (editeur EV) avec des captures collees.
+// pieces : fichiers joints [{ nom, type, contenu }] (voir fichiers.js).
 // urgence / impact : ids EV (1 = le plus fort), voir donnees.js.
 // Le ticket est cree dans l'etablissement du demandeur.
 // reponses : { id_question: valeur } -> creation sans workflow, reponses, puis demarrage.
 //   ["intervention", login, heures, commentaire] : action "Intervention sur site" (type inconnu du portail)
+
+const F = require("./fichiers");
 
 module.exports = [
   {
@@ -21,12 +25,28 @@ module.exports = [
   },
   {
     catalogue: 108, titre: "DPI très lent à l'ouverture des dossiers", demandeur: "sbernard", urgence: 1, impact: 1, heures: 6,
-    description: "Lenteur importante depuis hier soir, plusieurs services impactés.",
+    description: F.descriptionAvecCaptures(
+      [
+        "Bonjour,",
+        "Lenteur importante depuis hier soir, plusieurs services impactés (cardiologie, médecine interne).",
+        "Ouverture d'un dossier : plus d'une minute, puis le message ci-dessous. Même chose sur trois postes différents :",
+      ],
+      [
+        { titre: "DPI — Dossier patient", message: "Délai d'attente dépassé (60 s)", details: ["Le serveur n'a pas répondu à temps.", "Code : TIMEOUT-504"], couleur: "#1d5b8f" },
+        { titre: "DPI — Liste des patients", message: "Chargement en cours…", details: ["Service : Cardiologie", "Depuis 1 min 12 s"], couleur: "#1d5b8f" },
+      ]
+    ),
+    pieces: [
+      { nom: "capture-poste-cardio.svg", type: "image/svg+xml", contenu: F.capture({ titre: "DPI — Prescription", message: "Erreur lors de l'enregistrement", details: ["ORA-12170 : délai de connexion dépassé"], couleur: "#1d5b8f" }) },
+    ],
     etapes: [],
   },
   {
     catalogue: 103, titre: "Imprimante du 2e étage bloquée", demandeur: "cmartin", urgence: 3, impact: 2, heures: 26,
-    description: "Bourrage papier permanent, voyant orange.",
+    description: "<p>Bourrage papier <b>permanent</b>, voyant orange.</p><ul><li>Bac 2 vidé et rechargé</li><li>Imprimante éteinte puis rallumée</li></ul><p>Rien n'y fait.</p>",
+    pieces: [
+      { nom: "ecran-imprimante.svg", type: "image/svg+xml", contenu: F.capture({ titre: "Imprimante HP — Panneau de commande", message: "Bourrage papier — Bac 2", details: ["Ouvrir la porte C", "Code 13.B2.D2"], couleur: "#555" }) },
+    ],
     etapes: [
       ["prendre", "kbenali", 24],
       ["suspendre", "kbenali", 23, "Demandé au service le numéro inscrit sur l'étiquette de l'imprimante."],
@@ -67,15 +87,47 @@ module.exports = [
   },
   {
     catalogue: 115, titre: "Mail suspect reçu par plusieurs agents", demandeur: "arobert", urgence: 1, impact: 2, heures: 1,
-    description: "Faux mail de la paie demandant de se reconnecter à un lien externe.",
+    description: F.descriptionAvecCaptures(
+      ["Faux mail de la paie demandant de se reconnecter à un lien externe. Reçu par au moins 6 agents ce matin.", "Capture du mail :"],
+      [{ titre: "Outlook — Boîte de réception", message: "« Votre bulletin de paie est disponible »", details: ["De : paie-rh@0c-sante-portail.com", "Lien : http://bulletin-paie.example/connexion"], couleur: "#0f6cbd" }]
+    ),
+    pieces: [
+      {
+        nom: "mail-suspect.eml",
+        type: "message/rfc822",
+        contenu: "From: paie-rh@0c-sante-portail.com\nSubject: Votre bulletin de paie est disponible\n\nConnectez-vous pour le consulter : http://bulletin-paie.example/connexion\n",
+      },
+    ],
     etapes: [["prendre", "ymercier", 0.5]],
   },
   {
     catalogue: 111, titre: "Planning RH : heures de nuit mal calculées", demandeur: "arobert", urgence: 3, impact: 2, heures: 30,
-    description: "Les majorations de nuit ne s'appliquent plus depuis la mise à jour.",
+    description:
+      "<p>Les majorations de nuit ne s'appliquent plus depuis la mise à jour.</p>" +
+      '<p>Export du planning en pièce jointe. Capture faite par le cadre :</p><p><img src="https://ev-simule.local/upload/capture-planning.png" alt="capture planning"></p>',
+    pieces: [
+      {
+        nom: "export-planning-septembre.pdf",
+        type: "application/pdf",
+        contenu: F.pdf("Planning - unite de soins - septembre", [
+          "Agent       Nuits   Majoration attendue   Majoration payee",
+          "Agent A     6       180,00 EUR            0,00 EUR",
+          "Agent B     4       120,00 EUR            0,00 EUR",
+          "Agent C     8       240,00 EUR            0,00 EUR",
+        ]),
+      },
+    ],
     etapes: [
       ["prendre", "sblanc", 28],
-      ["commenter", "sblanc", 27, "Ticket ouvert chez l'éditeur, référence ED-4471."],
+      [
+        "commenter",
+        "sblanc",
+        27,
+        F.descriptionAvecCaptures(
+          ["Ticket ouvert chez l'éditeur, référence ED-4471. Erreur reproduite sur notre environnement de test :"],
+          [{ titre: "Planning — Calcul de la paie", message: "Règle « Majoration nuit » ignorée", details: ["Version 8.2.1", "Paramètre MAJ_NUIT absent"], couleur: "#6b3fa0", largeur: 560, hauteur: 300 }]
+        ),
+      ],
     ],
   },
   {

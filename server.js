@@ -75,6 +75,26 @@ api.get(
   })
 );
 
+// Pièce jointe d'un ticket. Affichée dans le navigateur pour les images et les PDF,
+// téléchargée sinon. Contenu fourni par des tiers : jamais exécuté (CSP « sandbox »,
+// pas de détection de type par le navigateur).
+const AFFICHABLES = /^(image\/(png|jpeg|gif|webp|bmp|svg\+xml)|application\/pdf|text\/plain)$/;
+api.get(
+  "/tickets/:id/pieces-jointes/:doc",
+  envelopper(async (req, res) => {
+    const { nom, type, contenu } = await source.getPieceJointe(req.user, req.params.id, req.params.doc);
+    const mode = AFFICHABLES.test(type) && req.query.telecharger === undefined ? "inline" : "attachment";
+    res.set({
+      "Content-Type": type,
+      "Content-Disposition": `${mode}; filename="${nom.replace(/[^\x20-\x7e]|"/g, "_")}"; filename*=UTF-8''${encodeURIComponent(nom)}`,
+      "Content-Security-Policy": "default-src 'none'; img-src data:; style-src 'unsafe-inline'; sandbox",
+      "X-Content-Type-Options": "nosniff",
+      "Cache-Control": "private, max-age=300",
+    });
+    res.send(contenu);
+  })
+);
+
 api.post(
   "/tickets",
   envelopper(async (req, res) => {

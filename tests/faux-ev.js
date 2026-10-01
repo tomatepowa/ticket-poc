@@ -12,6 +12,7 @@ function creerFauxEV({ groupes = [] } = {}) {
   const tickets = new Map(); // RFC_NUMBER -> ticket EV
   let actions = []; // actions EV, avec REQUEST.RFC_NUMBER
   const employes = new Map(); // EMPLOYEE_ID -> { employe, groupes }
+  const documents = new Map(); // RFC_NUMBER -> [{ id, nom, type, contenu }]
   let enPanne = null;
   let prochainId = 100000;
   let dernier = 0;
@@ -56,6 +57,10 @@ function creerFauxEV({ groupes = [] } = {}) {
     // Acces direct a une action (modification "silencieuse", sans toucher le ticket).
     action: (id) => trouverAction(id),
     actionsDe: (rfc) => actions.filter((a) => a.REQUEST.RFC_NUMBER === rfc),
+    joindre(rfc, { id, nom, type = "application/octet-stream", contenu }) {
+      if (!documents.has(rfc)) documents.set(rfc, []);
+      documents.get(rfc).push({ id, nom, type, contenu: Buffer.from(contenu) });
+    },
     panne(message = "EasyVista injoignable (test)") {
       enPanne = message;
     },
@@ -83,6 +88,17 @@ function creerFauxEV({ groupes = [] } = {}) {
       else if (search.includes("end_date_ut")) liste = actions.filter((a) => !a.END_DATE_UT);
       else liste = [...actions].sort((a, b) => String(b.START_DATE_UT).localeCompare(String(a.START_DATE_UT)));
       return page(liste, opts);
+    },
+    async getDocuments(rfc) {
+      verifier();
+      if (!tickets.has(rfc)) throw introuvable(`Ticket ${rfc}`);
+      return { records: (documents.get(rfc) || []).map((d) => ({ DOCUMENT_ID: d.id, DOCUMENT: d.nom })) };
+    },
+    async getDocument(rfc, id) {
+      verifier();
+      const d = (documents.get(rfc) || []).find((x) => x.id === String(id));
+      if (!d) throw introuvable(`Document ${id}`);
+      return { nom: d.nom, type: d.type, contenu: d.contenu };
     },
     async getGroups() {
       verifier();

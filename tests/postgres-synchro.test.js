@@ -279,6 +279,24 @@ describe("détail d'un ticket et actions", () => {
     assert.deepEqual(reaffecter.membres.map((m) => m.nom), ["Karim Benali"], "collègues du groupe, sans moi");
   });
 
+  testPg("pièces jointes : listées dans le détail, téléchargées avec les droits du ticket", async () => {
+    const { ev, source, u } = await monde();
+    ev.joindre(N.libre, { id: "40000_capture", nom: "Capture écran.PNG", contenu: "octets-png" });
+    ev.joindre(N.libre, { id: "40000_journal", nom: "journal.log", contenu: "ligne 1" });
+    const t = await source.getTicket(u.marc, N.libre);
+    assert.deepEqual(t.pieces_jointes, [
+      { id: "40000_capture", nom: "Capture écran.PNG", type: "image/png" },
+      { id: "40000_journal", nom: "journal.log", type: "text/plain" },
+    ]);
+    const fichier = await source.getPieceJointe(u.marc, N.libre, "40000_capture");
+    assert.equal(fichier.nom, "Capture écran.PNG");
+    assert.equal(fichier.type, "image/png", "type déduit du nom quand EV ne le donne pas");
+    assert.equal(fichier.contenu.toString(), "octets-png");
+    // Mêmes droits que le ticket : pas de pièce jointe d'un ticket qu'on ne voit pas.
+    assert.equal((await erreurDe(source.getPieceJointe(u.julie, N.libre, "40000_capture"))).status, 404);
+    assert.equal((await erreurDe(source.getPieceJointe(u.marc, N.libre, "40000_inconnu"))).status, 404);
+  });
+
   testPg("EV injoignable : détail servi depuis la base, sans aucun bouton", async () => {
     const { ev, source, u } = await monde();
     ev.panne();

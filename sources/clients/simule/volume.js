@@ -12,6 +12,7 @@
 // Tirage pseudo-aleatoire a graine fixe : meme jeu a chaque `npm run reset-demo`.
 
 const D = require("./donnees");
+const F = require("./fichiers");
 
 const NB_TICKETS = Number(process.env.DEMO_TICKETS ?? 1300);
 const JOURS = 90;
@@ -252,6 +253,23 @@ function genererVolume(nombre = NB_TICKETS) {
     const [titre, description] = H.choix(SUJETS[cat.SD_CATALOG_ID]);
     const dem = H.choix(demandeurs);
     const t = { catalogue: cat.SD_CATALOG_ID, titre, description, demandeur: dem.IDENTIFICATION, heures, etapes: [] };
+    // Comme dans la vraie vie : des captures collees dans la description, et des
+    // fichiers joints (capture ou journal), en general un seul.
+    const ecran = { titre: cat.TITLE_FR, message: titre, details: [description || "Voir ci-dessus."].filter(Boolean), couleur: H.choix(["#1d5b8f", "#2D6A6F", "#6b3fa0", "#555"]) };
+    if (H.proba(0.12)) {
+      t.description = F.descriptionAvecCaptures([description || titre, "Capture de l'écran :"], [{ ...ecran, details: [...ecran.details, `Poste ${100 + n % 400}`] }]);
+    }
+    if (H.proba(0.18)) {
+      t.pieces = [
+        H.proba(0.6)
+          ? { nom: `capture-${n + 1}.svg`, type: "image/svg+xml", contenu: F.capture(ecran) }
+          : { nom: "journal.log", type: "text/plain", contenu: `[${titre}]
+Erreur relevée par l'utilisateur.
+Code retour : ${1000 + (n % 9000)}
+` },
+      ];
+      if (H.proba(0.15)) t.pieces.push({ nom: `complement-${n + 1}.svg`, type: "image/svg+xml", contenu: F.capture({ ...ecran, message: "Message d'erreur (suite)" }) });
+    }
     if (incident) {
       t.urgence = Number(H.pondere({ 1: 3, 3: 7 }));
       t.impact = Number(H.pondere({ 1: 1, 2: 3, 3: 6 }));

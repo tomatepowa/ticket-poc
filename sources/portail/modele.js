@@ -8,6 +8,7 @@
 // role sur le ticket.
 
 const cfg = require("./correspondance");
+const { texteSeul } = require("./texte");
 
 // ---------- Lecture des champs EV ----------
 
@@ -275,7 +276,8 @@ function versTicket(ctx, u, titresCatalogue = new Map()) {
     numero: req.RFC_NUMBER,
     type: ctx.type,
     type_label: ctx.type === "INCIDENT" ? "Incident" : "Demande",
-    titre: req.TITLE || String(req.DESCRIPTION || "").slice(0, 80) || req.RFC_NUMBER,
+    // Description : HTML d'EV tel quel (affiché assaini par le front) ; titre de repli en texte seul.
+    titre: req.TITLE || texteSeul(req.DESCRIPTION).split("\n")[0].slice(0, 80) || req.RFC_NUMBER,
     description: req.DESCRIPTION || "",
     etape: ctx.etape,
     statut: ctx.statut,

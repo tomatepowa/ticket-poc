@@ -22,6 +22,8 @@
 //                                        filtres : vue, q, etablissement ("1,3"), groupe ("2,7"),
 //                                        statut ("" tous | ACTIFS | INACTIFS = resolus et clos)
 //   getTicket(user, rfc)                 ticket + historique + actions permises + progression
+//                                        + pieces_jointes [{ id, nom, type }]
+//   getPieceJointe(user, rfc, id)        { nom, type, contenu (Buffer) } (memes droits que le ticket)
 //                                        action : { code, label, commentaire, parametre, secondaire }
 //   creerTicket(user, data)              cree le ticket au nom de l'utilisateur
 //   executerAction(user, rfc, data)      { action, commentaire, groupe_id }

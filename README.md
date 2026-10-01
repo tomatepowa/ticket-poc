@@ -67,6 +67,21 @@ tickets en retard. À un instant donné, environ 150 tickets sont en cours et
 les autres résolus ou clos (utiles aussi pour les vues du pôle BI). Le jeu
 est identique à chaque remise à zéro ; `DEMO_TICKETS` (dans `.env`) change
 le nombre de tickets générés (`DEMO_TICKETS=0` : seulement ceux de `demo.js`).
+Comme dans la vraie vie, une partie des tickets a des captures d'écran
+collées dans la description ou les commentaires, et des pièces jointes
+(captures, journaux, PDF, mail) : voir `sources/clients/simule/fichiers.js`.
+
+**Captures et pièces jointes** : descriptions et commentaires EasyVista
+peuvent être du HTML (éditeur EV, images collées). Le détail d'un ticket
+les affiche assainis (DOMPurify : ni script ni lien `javascript:`), images
+à la largeur du panneau, clic pour agrandir. Les pièces jointes sont lues
+dans EV (`GET /requests/{n°}/documents`) et servies par le portail avec les
+mêmes droits que le ticket. La copie locale garde le HTML **sans** les
+images intégrées (elles restent dans EV) et une version texte seul, utilisée
+par le pôle BI (`bi.tickets.description`, `bi.actions.commentaire`). Les
+images hébergées dans EV (liens) ne sont pas encore affichées : une mention
+le signale. À vérifier sur la vraie instance : le format réel d'une capture
+collée, et la réponse du téléchargement d'une pièce jointe.
 
 `npm run reset-demo` remet les tickets de démonstration à zéro et vide la copie locale
 (même `DATABASE_URL` que le portail). La première synchro qui suit prend

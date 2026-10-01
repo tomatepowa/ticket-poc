@@ -10,6 +10,8 @@ import { api } from "../api.js";
 import { PRIORITE_LABEL, formatDateTime, formatHeure, lienTicket, toast } from "../outils.js";
 import { champsManquants, reponsesVisibles } from "../formulaires.js";
 import FormulaireEV from "./FormulaireEV.vue";
+import ContenuRiche from "./ContenuRiche.vue";
+import Apercu from "./Apercu.vue";
 
 const props = defineProps({
   ticket: { type: Object, required: true },
@@ -110,6 +112,22 @@ async function executer(action) {
     erreur.value = err.message;
     enCours.value = false;
   }
+}
+
+// ---------- Pièces jointes et images en grand ----------
+
+const lienPiece = (p, telecharger = false) =>
+  `/api/tickets/${encodeURIComponent(t.value.id)}/pieces-jointes/${encodeURIComponent(p.id)}${telecharger ? "?telecharger" : ""}`;
+const estImage = (p) => p.type.startsWith("image/");
+// Affichable directement dans un onglet (PDF, texte) ; sinon téléchargement.
+const estLisible = (p) => p.type === "application/pdf" || p.type === "text/plain";
+const ICONES = { image: "🖼", "application/pdf": "📄", "text/plain": "📝", "message/rfc822": "✉" };
+const icone = (p) => ICONES[p.type] || ICONES[p.type.split("/")[0]] || "📎";
+
+// Image affichée en grand : { src, nom, telechargement }
+const apercu = ref(null);
+function ouvrirApercu(image) {
+  apercu.value = image;
 }
 
 async function copierLien() {
@@ -236,7 +254,26 @@ async function copierLien() {
         <p class="form-error" role="alert">{{ erreur }}</p>
       </div>
 
-      <p class="detail-desc" :class="{ 'is-empty': !t.description }">{{ t.description || "Pas de description." }}</p>
+      <ContenuRiche class="detail-desc" :contenu="t.description" vide="Pas de description." @image="ouvrirApercu" />
+
+      <div v-if="t.pieces_jointes?.length" class="field">
+        <span class="section-label">Pièces jointes ({{ t.pieces_jointes.length }})</span>
+        <ul class="pieces-jointes">
+          <li v-for="p in t.pieces_jointes" :key="p.id" class="piece-jointe">
+            <span class="piece-icone" aria-hidden="true">{{ icone(p) }}</span>
+            <button
+              v-if="estImage(p)"
+              type="button"
+              class="piece-nom"
+              title="Afficher"
+              @click="ouvrirApercu({ src: lienPiece(p), nom: p.nom, telechargement: lienPiece(p, true) })"
+            >{{ p.nom }}</button>
+            <a v-else-if="estLisible(p)" class="piece-nom" :href="lienPiece(p)" target="_blank" rel="noopener">{{ p.nom }}</a>
+            <a v-else class="piece-nom" :href="lienPiece(p, true)">{{ p.nom }}</a>
+            <a class="piece-telecharger" :href="lienPiece(p, true)" :aria-label="`Télécharger ${p.nom}`" title="Télécharger">⤓</a>
+          </li>
+        </ul>
+      </div>
 
       <div v-if="t.formulaire" class="field">
         <span class="section-label">{{ t.formulaire.titre }}</span>
@@ -257,7 +294,7 @@ async function copierLien() {
               <span v-if="h.en_cours" class="event-step">en cours</span>
             </div>
             <div class="event-meta">{{ h.en_cours ? "Depuis le " : "" }}{{ formatDateTime(h.date) }}</div>
-            <div v-if="h.message" class="event-msg">{{ h.message }}</div>
+            <ContenuRiche v-if="h.message" class="event-msg" :contenu="h.message" @image="ouvrirApercu" />
           </li>
         </ol>
       </div>
@@ -293,4 +330,6 @@ async function copierLien() {
       </div>
     </div>
   </aside>
+
+  <Apercu v-if="apercu" :src="apercu.src" :nom="apercu.nom" :telechargement="apercu.telechargement || ''" @fermer="apercu = null" />
 </template>
