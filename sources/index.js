@@ -13,6 +13,8 @@
 //   listerComptesDev()                   comptes proposes a la connexion de dev
 //   getUtilisateur(id)                   utilisateur du portail (id = EMPLOYEE_ID EV), ou null
 //   vues(user)                           vues de liste disponibles pour cet utilisateur
+//   preferences(user)                    { vue_defaut } : preferences d'affichage
+//   definirPreferences(user, prefs)      enregistre { vue_defaut }
 //   listerEtablissements()               [{ id, nom }]
 //   listerGroupes()                      [{ id, nom }] groupes d'intervenants
 //   listerCatalogue(user)                [{ id, type, libelle, chemin }]

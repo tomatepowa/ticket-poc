@@ -36,7 +36,15 @@ api.use(auth.exiger);
 api.get(
   "/moi",
   envelopper(async (req, res) => {
-    res.json({ utilisateur: req.user, vues: await source.vues(req.user) });
+    res.json({ utilisateur: req.user, vues: await source.vues(req.user), preferences: await source.preferences(req.user) });
+  })
+);
+
+// Préférences d'affichage de l'utilisateur connecté : { vue_defaut }
+api.put(
+  "/preferences",
+  envelopper(async (req, res) => {
+    res.json(await source.definirPreferences(req.user, req.body || {}));
   })
 );
 

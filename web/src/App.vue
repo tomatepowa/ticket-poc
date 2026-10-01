@@ -21,8 +21,10 @@ const moi = ref(null);
 const vues = ref([]);
 const referentiels = ref({ etablissements: [], groupes: [], catalogue: [] });
 const filtres = reactive({ vue: "", q: "", etablissement: "", groupe: "", statut: "" });
-// Par défaut : tickets actifs (tout sauf résolu / clôturé), les autres restent à un clic.
-const DEFAUTS = { statut: "ACTIFS" };
+// Préférences de l'utilisateur (vue ouverte à la connexion), enregistrées côté serveur.
+const preferences = ref({ vue_defaut: "" });
+// Par défaut : la vue choisie par l'utilisateur, tickets actifs (tout sauf résolu / clôturé).
+const DEFAUTS = computed(() => ({ vue: preferences.value.vue_defaut || vues.value[0]?.code || "", statut: "ACTIFS" }));
 const tickets = ref([]);
 const stats = ref(null);
 const panneau = ref(null); // null | "creation" | "detail"
@@ -45,8 +47,8 @@ onMounted(async () => {
   try {
     config.value = await api("/auth/config");
     try {
-      const { utilisateur, vues } = await api("/moi");
-      await entrer(utilisateur, vues);
+      const { utilisateur, vues, preferences } = await api("/moi");
+      await entrer(utilisateur, vues, preferences);
     } catch (err) {
       if (!(err instanceof NonConnecte)) throw err;
       etat.value = "connexion";
@@ -64,15 +66,16 @@ onBeforeUnmount(() => {
 });
 
 async function onConnecte(utilisateur) {
-  const { vues } = await api("/moi");
-  await entrer(utilisateur, vues);
+  const { vues, preferences } = await api("/moi");
+  await entrer(utilisateur, vues, preferences);
 }
 
-async function entrer(utilisateur, vuesDisponibles) {
+async function entrer(utilisateur, vuesDisponibles, prefs) {
   referentiels.value = await api("/referentiels");
   moi.value = utilisateur;
   vues.value = vuesDisponibles;
-  Object.assign(filtres, { vue: vuesDisponibles[0].code, q: "", etablissement: "", groupe: "", ...DEFAUTS });
+  preferences.value = prefs || { vue_defaut: "" };
+  Object.assign(filtres, { q: "", etablissement: "", groupe: "", ...DEFAUTS.value });
   etat.value = "portail";
   await rafraichir();
 
@@ -108,6 +111,16 @@ async function rafraichir() {
 }
 
 // message : confirmation affichée quand le filtre vient d'un clic dans la liste.
+// Vue ouverte à la connexion (coche dans le rail).
+async function choisirVueDefaut(code) {
+  try {
+    preferences.value = await api("/preferences", { method: "PUT", body: JSON.stringify({ vue_defaut: code }) });
+    toast(`Vue à l'ouverture : « ${vues.value.find((v) => v.code === code)?.label} »`);
+  } catch (err) {
+    toast(err.message);
+  }
+}
+
 function filtrer(changements, message) {
   Object.assign(filtres, changements);
   if (message) toast(message);
@@ -236,7 +249,9 @@ function onKeydown(e) {
       :filtres="filtres"
       :config="config"
       :stats="stats"
+      :vue-defaut="DEFAUTS.vue"
       @filtrer="filtrer"
+      @vue-defaut="choisirVueDefaut"
       @deconnecter="deconnecter"
     />
 
@@ -251,7 +266,7 @@ function onKeydown(e) {
         </button>
       </header>
 
-      <FiltresActifs :filtres="filtres" :referentiels="referentiels" :defauts="DEFAUTS" @filtrer="filtrer" />
+      <FiltresActifs :filtres="filtres" :referentiels="referentiels" :vues="vues" :defauts="DEFAUTS" @filtrer="filtrer" />
 
       <BandeauSynchro :profil="moi.profil" @nouvelles-donnees="onNouvellesDonnees" />
 

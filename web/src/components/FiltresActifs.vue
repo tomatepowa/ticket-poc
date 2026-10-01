@@ -2,14 +2,15 @@
 // Résumé des filtres actifs, en haut de la liste : une pastille par filtre (✕ pour
 // le retirer seul) et « Tout effacer » pour revenir aux filtres par défaut.
 // Le statut est toujours affiché, même par défaut (« Actifs », sans ✕) : la liste
-// n'est jamais filtrée sans qu'on le voie. La vue n'en fait pas partie : c'est le
-// titre de la page.
+// n'est jamais filtrée sans qu'on le voie. Idem pour la vue (✕ : retour à la vue
+// par défaut de l'utilisateur).
 import { computed } from "vue";
 
 const props = defineProps({
   filtres: { type: Object, required: true },
   referentiels: { type: Object, required: true },
-  // Valeurs par défaut des filtres (statut « Actifs »...).
+  vues: { type: Array, required: true },
+  // Valeurs par défaut : { vue, statut }.
   defauts: { type: Object, required: true },
 });
 const emit = defineEmits(["filtrer"]);
@@ -22,6 +23,12 @@ const actifs = computed(() => {
   const f = props.filtres;
   const liste = [];
   // retirer null : filtre par défaut, affiché mais rien à retirer.
+  liste.push({
+    cle: "vue",
+    type: "Vue",
+    texte: props.vues.find((v) => v.code === f.vue)?.label || f.vue,
+    retirer: f.vue === props.defauts.vue ? null : { vue: props.defauts.vue },
+  });
   const statutDefaut = f.statut === props.defauts.statut;
   liste.push({
     cle: "statut",
@@ -51,7 +58,7 @@ function retirer(filtre) {
 }
 
 function toutEffacer() {
-  emit("filtrer", { statut: props.defauts.statut, q: "", groupe: "", etablissement: "" }, "Filtres effacés");
+  emit("filtrer", { vue: props.defauts.vue, statut: props.defauts.statut, q: "", groupe: "", etablissement: "" }, "Filtres effacés");
 }
 </script>
 

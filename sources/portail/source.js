@@ -348,6 +348,24 @@ function creerSource(client) {
       return vuesPour(u);
     },
 
+    // ---------- Préférences d'affichage ----------
+
+    // { vue_defaut } : vue ouverte à la connexion (la première si rien n'est choisi
+    // ou si la vue choisie n'existe plus pour ce profil).
+    async preferences(u) {
+      const p = await cache.preferences.lire(u.id);
+      const vues = vuesPour(u);
+      return { vue_defaut: vues.some((v) => v.code === p.vue_defaut) ? p.vue_defaut : vues[0].code };
+    },
+
+    async definirPreferences(u, { vue_defaut } = {}) {
+      if (vue_defaut !== undefined) {
+        if (!vuesPour(u).some((v) => v.code === vue_defaut)) throw new ErreurSource(400, "Vue inconnue");
+        await cache.preferences.ecrire(u.id, "vue_defaut", vue_defaut);
+      }
+      return this.preferences(u);
+    },
+
     // ---------- Referentiels ----------
 
     async listerEtablissements() {
@@ -578,20 +596,19 @@ function creerSource(client) {
     },
 
     async stats(u, filtres = {}) {
-      const mesGroupes = new Set(u.groupes.map((g) => g.id));
       const visibles = await ticketsVisibles(u);
 
-      // Compteurs par etablissement (a moi / de mes groupes) : tous les tickets
-      // visibles, filtres par recherche / groupe / statut mais PAS par la vue ni
-      // par la selection d'etablissements (sinon les non-coches tomberaient a 0).
-      // Sans filtre de statut : seulement les tickets en cours.
+      // Compteurs par etablissement (a moi / total) : les tickets de la vue affichee,
+      // avec les memes filtres, SAUF la selection d'etablissements (sinon les
+      // non-coches tomberaient a 0).
       const parEtablissement = new Map();
-      for (const t of filtrerTickets(visibles.map(({ t }) => t), filtres, { ignorerEtablissements: true })) {
-        if (!filtres.statut && TERMINES.includes(t.statut)) continue;
+      const vueAffichee = filtres.vue || vuesPour(u)[0].code;
+      const deLaVue = visibles.filter(({ ctx }) => filtreVue(u, ctx, vueAffichee)).map(({ t }) => t);
+      for (const t of filtrerTickets(deLaVue, filtres, { ignorerEtablissements: true })) {
         if (!t.etablissement) continue;
-        const e = parEtablissement.get(t.etablissement.id) || { id: t.etablissement.id, moi: 0, groupes: 0 };
+        const e = parEtablissement.get(t.etablissement.id) || { id: t.etablissement.id, moi: 0, total: 0 };
         if (t.affectation === "MOI") e.moi++;
-        if (u.profil === "SUPERVISEUR" || (t.groupe && mesGroupes.has(t.groupe.id))) e.groupes++;
+        e.total++;
         parEtablissement.set(e.id, e);
       }
 

@@ -207,6 +207,23 @@ const sessions = {
   },
 };
 
+// ---------- Préférences d'affichage (données du portail, pas un cache) ----------
+
+const preferences = {
+  // { cle: valeur } de l'utilisateur
+  async lire(utilisateurId) {
+    const { rows } = await base.requete("SELECT cle, valeur FROM portail.preferences WHERE utilisateur_id = $1", [utilisateurId]);
+    return Object.fromEntries(rows.map((r) => [r.cle, r.valeur]));
+  },
+  async ecrire(utilisateurId, cle, valeur) {
+    await base.requete(
+      `INSERT INTO portail.preferences (utilisateur_id, cle, valeur) VALUES ($1, $2, $3)
+       ON CONFLICT (utilisateur_id, cle) DO UPDATE SET valeur = EXCLUDED.valeur`,
+      [utilisateurId, cle, valeur]
+    );
+  },
+};
+
 module.exports = {
   initialiser,
   enregistrer,
@@ -221,5 +238,6 @@ module.exports = {
   purger,
   vider,
   sessions,
+  preferences,
   fermer: () => base.fermer(),
 };

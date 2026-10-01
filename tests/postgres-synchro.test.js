@@ -20,7 +20,9 @@ before(async () => {
   await cache.initialiser();
 });
 beforeEach(async () => {
-  if (cache) await cache.vider();
+  if (!cache) return;
+  await cache.vider();
+  await base.requete("TRUNCATE portail.preferences");
 });
 after(async () => {
   if (base) await base.fermer();
@@ -218,6 +220,33 @@ describe("listes du portail (lues dans la base)", () => {
 });
 
 // ---------- Detail et actions ----------
+
+describe("préférences et compteurs par établissement", () => {
+  testPg("vue par défaut : la première, puis celle choisie, gardée pour l'utilisateur seul", async () => {
+    const { ev, source, u } = await monde();
+    assert.deepEqual(await source.preferences(u.marc), { vue_defaut: "groupes" });
+    assert.deepEqual(await source.definirPreferences(u.marc, { vue_defaut: "moi" }), { vue_defaut: "moi" });
+    // Enregistrée en base : une autre instance du portail la retrouve.
+    assert.deepEqual(await creerSource(ev).preferences(u.marc), { vue_defaut: "moi" });
+    assert.deepEqual(await source.preferences(u.karim), { vue_defaut: "groupes" }, "propre à chaque utilisateur");
+    const err = await erreurDe(source.definirPreferences(u.marc, { vue_defaut: "a_valider" }));
+    assert.equal(err.status, 400);
+  });
+
+  testPg("compteurs par établissement : à moi / total de la vue affichée, avec les filtres", async () => {
+    const { ev, synchro, source, u } = await monde();
+    const clinique = { LOCATION_ID: 7, LOCATION_FR: "Clinique test" };
+    for (const n of [N.libre, N.karim, N.resolu]) ev.modifier(n, { LOCATION: clinique });
+    await synchro.executer();
+    const compte = async (filtres) =>
+      (await source.stats(u.karim, filtres)).parEtablissement.find((e) => e.id === 7) || { id: 7, moi: 0, total: 0 };
+    assert.deepEqual(await compte({ vue: "groupes", statut: "ACTIFS" }), { id: 7, moi: 1, total: 2 });
+    assert.deepEqual(await compte({ vue: "groupes", statut: "" }), { id: 7, moi: 1, total: 3 });
+    assert.deepEqual(await compte({ vue: "non_affectes", statut: "ACTIFS" }), { id: 7, moi: 0, total: 1 });
+    // La sélection d'établissements ne change pas les compteurs (sinon les non-cochés tomberaient à 0).
+    assert.deepEqual(await compte({ vue: "groupes", statut: "ACTIFS", etablissement: "99" }), { id: 7, moi: 1, total: 2 });
+  });
+});
 
 describe("détail d'un ticket et actions", () => {
   testPg("ticket d'un autre groupe : « introuvable » (son existence n'est pas révélée)", async () => {

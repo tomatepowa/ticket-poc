@@ -10,8 +10,10 @@ const props = defineProps({
   filtres: { type: Object, required: true },
   config: { type: Object, required: true },
   stats: { type: Object, default: null },
+  // Vue ouverte à la connexion (coche ✓) ; choisie au clic sur le rond d'une autre vue.
+  vueDefaut: { type: String, default: "" },
 });
-const emit = defineEmits(["filtrer", "deconnecter"]);
+const emit = defineEmits(["filtrer", "deconnecter", "vue-defaut"]);
 
 const STATUTS = [
   { code: "", label: "Tous" },
@@ -43,14 +45,14 @@ function basculerEtablissement(id) {
 
 // Tickets en cours par établissement : { moi, groupes } (tous les tickets pour un superviseur).
 const volumes = computed(() => new Map((props.stats?.parEtablissement || []).map((e) => [e.id, e])));
-const volume = (id) => volumes.value.get(id) || { moi: 0, groupes: 0 };
-const libelleGroupes = computed(() => (props.moi.profil === "SUPERVISEUR" ? "en cours" : "de mes groupes"));
+const volume = (id) => volumes.value.get(id) || { moi: 0, total: 0 };
+
 
 // Tri de la liste : par volume décroissant (mes groupes, ou à moi) ou alphabétique.
 // Le choix est mémorisé dans le navigateur (simple confort).
 const CLE_TRI = "tri-etablissements";
 const tris = computed(() => [
-  { code: "groupes", label: props.moi.profil === "SUPERVISEUR" ? "En cours" : "Mes groupes" },
+  { code: "total", label: "Total" },
   { code: "moi", label: "À moi" },
   { code: "alpha", label: "A → Z" },
 ]);
@@ -59,9 +61,9 @@ const tri = ref(lireTri());
 function lireTri() {
   try {
     const t = localStorage.getItem(CLE_TRI);
-    return ["groupes", "moi", "alpha"].includes(t) ? t : "groupes";
+    return ["total", "moi", "alpha"].includes(t) ? t : "total";
   } catch {
-    return "groupes";
+    return "total";
   }
 }
 
@@ -79,7 +81,7 @@ const etablissementsTries = computed(() => {
   const liste = [...props.referentiels.etablissements];
   if (tri.value === "alpha") return liste.sort((a, b) => cochesEnTete(a, b) || parNom(a, b));
   // Volume décroissant ; à égalité, l'autre compteur puis le nom.
-  const autre = tri.value === "moi" ? "groupes" : "moi";
+  const autre = tri.value === "moi" ? "total" : "moi";
   return liste.sort(
     (a, b) =>
       cochesEnTete(a, b) ||
@@ -121,17 +123,22 @@ function changerTheme() {
       <div class="rail-group">
         <span class="rail-label" id="l-vue">Vue</span>
         <div class="vue-list" role="group" aria-labelledby="l-vue">
-          <button
-            v-for="v in vues"
-            :key="v.code"
-            class="vue-item"
-            :aria-pressed="v.code === filtres.vue"
-            @click="emit('filtrer', { vue: v.code })"
-          >
-            <span>{{ v.label }}</span>
-            <span v-if="stats?.parVue" class="vue-compte">{{ stats.parVue[v.code] ?? 0 }}</span>
-          </button>
+          <div v-for="v in vues" :key="v.code" class="vue-ligne" :class="{ 'is-defaut': v.code === vueDefaut }">
+            <button class="vue-item" :aria-pressed="v.code === filtres.vue" @click="emit('filtrer', { vue: v.code })">
+              <span>{{ v.label }}</span>
+              <span v-if="stats?.parVue" class="vue-compte">{{ stats.parVue[v.code] ?? 0 }}</span>
+            </button>
+            <button
+              type="button"
+              class="vue-defaut"
+              :aria-pressed="v.code === vueDefaut"
+              :title="v.code === vueDefaut ? 'Vue affichée à l\'ouverture du portail' : 'Afficher cette vue à l\'ouverture du portail'"
+              :aria-label="`Vue par défaut : ${v.label}`"
+              @click="v.code !== vueDefaut && emit('vue-defaut', v.code)"
+            >{{ v.code === vueDefaut ? "✓" : "" }}</button>
+          </div>
         </div>
+        <p class="vue-legende">✓ vue affichée à l'ouverture</p>
       </div>
 
       <div class="rail-group">
@@ -175,7 +182,7 @@ function changerTheme() {
             Tout décocher ({{ coches.size }})
           </button>
         </div>
-        <p class="etab-legende">Tickets {{ !filtres.statut || filtres.statut === "ACTIFS" ? "en cours " : "" }}: à moi / {{ libelleGroupes }}</p>
+        <p class="etab-legende">Tickets de la vue : à moi / total</p>
         <div class="etab-tri" role="group" aria-label="Trier les établissements">
           <button
             v-for="t in tris"
@@ -193,14 +200,14 @@ function changerTheme() {
             v-for="e in etablissementsTries"
             :key="e.id"
             class="etab-item"
-            :class="{ 'is-vide': !volume(e.id).groupes && !volume(e.id).moi, 'is-coche': coches.has(e.id) }"
+            :class="{ 'is-vide': !volume(e.id).total, 'is-coche': coches.has(e.id) }"
           >
             <input type="checkbox" :checked="coches.has(e.id)" @change="basculerEtablissement(e.id)" />
             <span class="etab-nom" :title="e.nom">{{ e.nom }}</span>
             <span
               class="etab-compte"
-              :title="`${volume(e.id).moi} affecté(s) à moi, ${volume(e.id).groupes} ${libelleGroupes}`"
-            >({{ volume(e.id).moi }}/{{ volume(e.id).groupes }})</span>
+              :title="`${volume(e.id).moi} affecté(s) à moi, ${volume(e.id).total} dans la vue`"
+            >({{ volume(e.id).moi }}/{{ volume(e.id).total }})</span>
           </label>
         </div>
       </div>
