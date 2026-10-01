@@ -964,6 +964,7 @@ table.tickets tbody tr.ligne-moi:hover { background: var(--hover); }
   margin: -6px 0 8px;
 }
 .legende-affectation .affecte { margin-top: 0; }
+.legende-affectation button.affecte-tiers { background: var(--surface); }
 
 /* ---------- Rail : établissements à cocher, avec leur volume ---------- */
 .rail-label-ligne { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }

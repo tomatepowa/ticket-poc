@@ -4,7 +4,8 @@
 // En-tetes cliquables : tri croissant, puis decroissant au deuxieme clic.
 // Selection multiple (equipes support) : remettre des tickets affectes dans leur groupe.
 // Groupe, affectation et etablissement sont cliquables : ils appliquent le filtre
-// correspondant du rail (un second clic le retire).
+// correspondant (un second clic le retire). La legende au-dessus de la liste filtre
+// par affectation : a moi, a un autre, a personne.
 import { computed, ref, watch } from "vue";
 import { PRIORITE_LABEL, formatCourt } from "../outils.js";
 
@@ -19,8 +20,6 @@ const emit = defineEmits(["ouvrir", "desaffecter", "filtrer"]);
 
 // ---------- Filtres depuis la liste ----------
 
-const aVue = (code) => props.vues.some((v) => v.code === code);
-const libelleVue = (code) => props.vues.find((v) => v.code === code)?.label || code;
 const etablissementsCoches = computed(() => String(props.filtres.etablissement || "").split(",").filter(Boolean).map(Number));
 
 // Chaque filtre : possible pour ce profil ?, actif ?, changement qui l'active / le retire.
@@ -32,21 +31,19 @@ const FILTRES = {
     retirer: { groupe: "" },
     libelle: `groupe « ${t.groupe?.nom} »`,
   }),
-  // Moi / Non affecté : la vue correspondante, si ce profil l'a.
-  moi: () => ({
-    possible: aVue("moi"),
-    actif: props.filtres.vue === "moi",
-    activer: { vue: "moi" },
-    retirer: { vue: props.vues[0].code },
-    libelle: `vue « ${libelleVue("moi")} »`,
-  }),
-  aucun: () => ({
-    possible: aVue("non_affectes"),
-    actif: props.filtres.vue === "non_affectes",
-    activer: { vue: "non_affectes" },
-    retirer: { vue: props.vues[0].code },
-    libelle: `vue « ${libelleVue("non_affectes")} »`,
-  }),
+  // Affectation de l'étape en cours (légende et pastilles « Moi » / « Non affecté »).
+  ...Object.fromEntries(
+    Object.entries({ MOI: "affectés à moi", TIERS: "affectés à un autre", AUCUN: "non affectés" }).map(([code, libelle]) => [
+      code,
+      () => ({
+        possible: true,
+        actif: props.filtres.affectation === code,
+        activer: { affectation: code },
+        retirer: { affectation: "" },
+        libelle,
+      }),
+    ])
+  ),
   // Un collègue : la recherche porte aussi sur le nom de l'intervenant.
   intervenant: (t) => ({
     possible: Boolean(t.intervenant?.nom),
@@ -80,11 +77,17 @@ function appliquer(type, t) {
 }
 
 // Affectation de l'etape en cours : [type de filtre, classe, texte affiche]
+// (le nom d'un collegue filtre sur ce collegue ; la legende, sur tous les "autres")
 const AFFECTATION = {
-  MOI: ["moi", "affecte-moi", () => "Moi"],
+  MOI: ["MOI", "affecte-moi", () => "Moi"],
   TIERS: ["intervenant", "affecte-tiers", (t) => t.intervenant?.nom],
-  AUCUN: ["aucun", "affecte-aucun", () => "Non affecté"],
+  AUCUN: ["AUCUN", "affecte-aucun", () => "Non affecté"],
 };
+const LEGENDE = [
+  ["AUCUN", "affecte-aucun", "Non affecté"],
+  ["MOI", "affecte-moi", "Moi"],
+  ["TIERS", "affecte-tiers", "Affecté à un autre"],
+];
 
 // ---------- Tri ----------
 
@@ -192,11 +195,18 @@ function onClic(e, t) {
       <button class="btn btn-small btn-primary" type="button" @click="desaffecter">Remettre dans leur groupe (non affectés)</button>
       <button class="btn btn-small" type="button" @click="selection = new Set()">Annuler la sélection</button>
     </div>
-    <p class="legende-affectation" aria-hidden="true">
-      <span class="affecte affecte-aucun">Non affecté</span>
-      <span class="affecte affecte-moi">Moi</span>
-      <span class="affecte affecte-tiers">Affecté à un autre</span>
-    </p>
+    <div class="legende-affectation" role="group" aria-label="Filtrer par affectation">
+      <button
+        v-for="[code, classe, texte] in LEGENDE"
+        :key="code"
+        type="button"
+        class="affecte filtre-cellule"
+        :class="[classe, { 'is-actif': filtre(code).actif }]"
+        :aria-pressed="filtre(code).actif"
+        :title="titreFiltre(code)"
+        @click="appliquer(code)"
+      >{{ texte }}</button>
+    </div>
   </div>
   <section class="table-wrap">
     <table class="tickets">

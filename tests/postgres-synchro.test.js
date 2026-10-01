@@ -173,6 +173,16 @@ describe("listes du portail (lues dans la base)", () => {
     assert.deepEqual(numeros(await source.listerTickets(u.karim, { vue: "moi" })), [N.karim]);
   });
 
+  testPg("filtre d'affectation (légende de la liste) : à moi, à un autre, à personne", async () => {
+    const { source, u } = await monde();
+    assert.deepEqual(numeros(await source.listerTickets(u.isabelle, { vue: "tout", affectation: "AUCUN" })), [N.libre, N.infra].sort());
+    assert.deepEqual(numeros(await source.listerTickets(u.marc, { vue: "groupes", affectation: "TIERS" })), [N.karim]);
+    assert.deepEqual(numeros(await source.listerTickets(u.karim, { vue: "groupes", affectation: "MOI" })), [N.karim]);
+    assert.deepEqual(numeros(await source.listerTickets(u.marc, { vue: "groupes", affectation: "MOI" })), []);
+    const s = await source.stats(u.isabelle, { vue: "tout", affectation: "AUCUN" });
+    assert.equal(s.parFiltreStatut[""], 2, "les compteurs de statut suivent le filtre");
+  });
+
   testPg("filtre de statut : « Actifs » exclut les résolus et clos, un statut précis ne garde que lui", async () => {
     const { source, u } = await monde();
     const actifs = await source.listerTickets(u.isabelle, { vue: "tout", statut: "ACTIFS" });

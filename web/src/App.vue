@@ -19,7 +19,7 @@ const config = ref(null);
 const moi = ref(null);
 const vues = ref([]);
 const referentiels = ref({ etablissements: [], groupes: [], catalogue: [] });
-const filtres = reactive({ vue: "", q: "", etablissement: "", groupe: "", statut: "" });
+const filtres = reactive({ vue: "", q: "", etablissement: "", groupe: "", statut: "", affectation: "" });
 const tickets = ref([]);
 const stats = ref(null);
 const panneau = ref(null); // null | "creation" | "detail"
@@ -30,7 +30,7 @@ const versionDetail = ref(0);
 const titreVue = computed(() => vues.value.find((v) => v.code === filtres.vue)?.label || "Tickets");
 const compteVisible = computed(() => {
   const n = tickets.value.length;
-  const avecFiltres = filtres.q || filtres.etablissement || filtres.groupe || filtres.statut;
+  const avecFiltres = filtres.q || filtres.etablissement || filtres.groupe || filtres.statut || filtres.affectation;
   return `${n} ticket${n > 1 ? "s" : ""}` + (avecFiltres ? " correspondant aux filtres" : "");
 });
 
@@ -70,7 +70,7 @@ async function entrer(utilisateur, vuesDisponibles) {
   moi.value = utilisateur;
   vues.value = vuesDisponibles;
   // Par défaut : tickets actifs (tout sauf résolu / clôturé), les clos restent à un clic.
-  Object.assign(filtres, { vue: vuesDisponibles[0].code, q: "", etablissement: "", groupe: "", statut: "ACTIFS" });
+  Object.assign(filtres, { vue: vuesDisponibles[0].code, q: "", etablissement: "", groupe: "", statut: "ACTIFS", affectation: "" });
   etat.value = "portail";
   await rafraichir();
 

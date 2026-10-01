@@ -17,7 +17,8 @@
 //   listerGroupes()                      [{ id, nom }] groupes d'intervenants
 //   listerCatalogue(user)                [{ id, type, libelle, chemin }]
 //   listerTickets(user, filtres)         tickets VISIBLES par l'utilisateur
-//                                        filtres : vue, q, etablissement, groupe, statut
+//                                        filtres : vue, q, etablissement, groupe, statut,
+//                                        affectation (MOI | TIERS | AUCUN, vue de l'utilisateur)
 //   getTicket(user, rfc)                 ticket + historique + actions permises + progression
 //                                        action : { code, label, commentaire, parametre, secondaire }
 //   creerTicket(user, data)              cree le ticket au nom de l'utilisateur

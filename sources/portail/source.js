@@ -168,7 +168,8 @@ function creerSource(client) {
     }
   }
 
-  // Filtres du rail (recherche, etablissements, groupe, statut) appliques a des
+  // Filtres du rail (recherche, etablissements, groupe, statut) et de la liste
+  // (affectation de l'etape en cours : a moi, a un autre, a personne) appliques a des
   // tickets deja mis en forme. ignorerEtablissements : pour les compteurs par
   // etablissement, qui doivent rester comparables quelle que soit la selection.
   function filtrerTickets(tickets, filtres, { ignorerEtablissements = false } = {}) {
@@ -182,6 +183,7 @@ function creerSource(client) {
     return tickets
       .filter((t) => !etablissements.length || etablissements.includes(t.etablissement?.id))
       .filter((t) => !filtres.groupe || t.groupe?.id === Number(filtres.groupe))
+      .filter((t) => !filtres.affectation || t.affectation === filtres.affectation)
       // "ACTIFS" : tout sauf resolu et cloture ; sinon un statut precis.
       .filter((t) => !filtres.statut || (filtres.statut === "ACTIFS" ? !TERMINES.includes(t.statut) : t.statut === filtres.statut))
       .filter((t) => !q || normaliser(`${t.numero} ${t.titre} ${t.demandeur?.nom} ${t.intervenant?.nom || ""}`).includes(q));
