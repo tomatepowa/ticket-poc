@@ -1,6 +1,11 @@
 <script setup>
-// Detail d'un ticket : progression, actions proposees par le serveur, historique.
-import { computed, ref } from "vue";
+// Detail d'un ticket : progression, actions proposees par le serveur, description,
+// historique, puis les informations du ticket.
+// Actions : seules celles attendues de l'utilisateur sont des boutons visibles, les
+// autres sont repliees sous « Autres actions ». Une action qui demande une saisie
+// (commentaire, collegue, groupe, formulaire EV) ouvre d'abord sa saisie, puis se
+// confirme.
+import { computed, nextTick, ref } from "vue";
 import { api } from "../api.js";
 import { PRIORITE_LABEL, formatDateTime, formatHeure, lienTicket, toast } from "../outils.js";
 import { champsManquants, reponsesVisibles } from "../formulaires.js";
@@ -26,12 +31,9 @@ const membreId = ref("");
 const champMembre = ref(null);
 
 const t = computed(() => props.ticket);
-const transfert = computed(() => t.value.actions.some((a) => a.parametre === "groupe"));
-// Réaffectation : collègues du groupe proposés par le serveur.
-const reaffectation = computed(() => t.value.actions.find((a) => a.parametre === "membre") || null);
+const principales = computed(() => t.value.actions.filter((a) => !a.secondaire));
+const secondaires = computed(() => t.value.actions.filter((a) => a.secondaire));
 const autresGroupes = computed(() => props.groupes.filter((g) => g.id !== t.value.groupe?.id));
-// La première action non secondaire est mise en avant.
-const iPrincipale = computed(() => t.value.actions.findIndex((a) => !a.secondaire));
 
 // Progression : parcours type du workflow, étape courante (-1 = sortie du parcours).
 const sortie = computed(() => t.value.progression.position === -1);
@@ -42,22 +44,25 @@ function classeEtape(i) {
   return i < position ? "is-done" : i === position ? "is-current" : "";
 }
 
-// Étape qui demande un formulaire EV : on l'affiche d'abord, l'action part à la validation.
-const actionFormulaire = ref(null);
+// Action en cours de saisie (commentaire, collègue, groupe ou formulaire EV), ou null.
+const choisie = ref(null);
 const reponses = ref({});
+const besoinSaisie = (a) => Boolean(a.commentaire || a.parametre || a.questionnaire);
 
-function demander(action) {
+async function demander(action) {
   erreur.value = "";
-  if (action.questionnaire) {
-    actionFormulaire.value = action;
-    reponses.value = {};
-  } else {
-    executer(action);
-  }
+  if (!besoinSaisie(action)) return executer(action);
+  choisie.value = action;
+  commentaire.value = "";
+  membreId.value = "";
+  groupeId.value = "";
+  reponses.value = {};
+  await nextTick();
+  (champMembre.value || champGroupe.value || champCommentaire.value)?.focus();
 }
 
-function annulerFormulaire() {
-  actionFormulaire.value = null;
+function annuler() {
+  choisie.value = null;
   erreur.value = "";
 }
 
@@ -173,45 +178,61 @@ async function copierLien() {
       </div>
 
       <p v-if="!t.actions.length && !depuisCache" class="done-note">Aucune action possible de votre part sur ce ticket.</p>
-      <div v-else class="actions-box">
-        <label class="section-label" for="action-comment">Votre action</label>
-        <textarea
-          id="action-comment"
-          ref="champCommentaire"
-          v-model="commentaire"
-          rows="2"
-          placeholder="Commentaire (obligatoire pour les actions marquées *)"
-        ></textarea>
-        <select v-if="reaffectation" ref="champMembre" v-model="membreId" aria-label="Collègue à qui réaffecter">
-          <option value="">Réaffecter à… (choisir un collègue)</option>
-          <option v-for="m in reaffectation.membres" :key="m.id" :value="m.id">{{ m.nom }}</option>
-          <option v-if="!reaffectation.membres.length" disabled>Aucun autre membre dans ce groupe</option>
-        </select>
-        <select v-if="transfert" ref="champGroupe" v-model="groupeId" aria-label="Groupe cible du transfert">
-          <option value="">Transférer vers… (choisir un groupe)</option>
-          <option v-for="g in autresGroupes" :key="g.id" :value="g.id">{{ g.nom }}</option>
-        </select>
-        <!-- Étape qui demande un formulaire EV : on le remplit, puis on valide l'action -->
-        <template v-if="actionFormulaire">
-          <FormulaireEV v-model="reponses" :questionnaire="actionFormulaire.questionnaire" prefixe="a-q" />
+      <div v-else-if="t.actions.length" class="actions-box">
+        <!-- Saisie de l'action choisie, puis confirmation -->
+        <template v-if="choisie">
+          <span class="section-label">{{ choisie.label }}</span>
+          <select v-if="choisie.parametre === 'membre'" ref="champMembre" v-model="membreId" aria-label="Collègue à qui réaffecter">
+            <option value="">Choisir un collègue…</option>
+            <option v-for="m in choisie.membres" :key="m.id" :value="m.id">{{ m.nom }}</option>
+          </select>
+          <select v-if="choisie.parametre === 'groupe'" ref="champGroupe" v-model="groupeId" aria-label="Groupe cible du transfert">
+            <option value="">Choisir un groupe…</option>
+            <option v-for="g in autresGroupes" :key="g.id" :value="g.id">{{ g.nom }}</option>
+          </select>
+          <FormulaireEV v-if="choisie.questionnaire" v-model="reponses" :questionnaire="choisie.questionnaire" prefixe="a-q" />
+          <textarea
+            id="action-comment"
+            ref="champCommentaire"
+            v-model="commentaire"
+            rows="3"
+            :placeholder="choisie.commentaire ? 'Commentaire (obligatoire)' : 'Commentaire (facultatif)'"
+            :aria-label="choisie.commentaire ? 'Commentaire (obligatoire)' : 'Commentaire (facultatif)'"
+          ></textarea>
           <div class="status-actions">
-            <button class="btn btn-primary" :disabled="enCours" @click="executer(actionFormulaire)">
-              Valider : {{ actionFormulaire.label }}
-            </button>
-            <button class="btn" type="button" :disabled="enCours" @click="annulerFormulaire">Annuler</button>
+            <button class="btn btn-primary" :disabled="enCours" @click="executer(choisie)">Confirmer : {{ choisie.label }}</button>
+            <button class="btn" type="button" :disabled="enCours" @click="annuler">Annuler</button>
           </div>
         </template>
-        <div v-else class="status-actions">
-          <button
-            v-for="(action, i) in t.actions"
-            :key="action.code"
-            :class="i === iPrincipale ? 'btn btn-primary' : 'btn'"
-            :disabled="enCours"
-            @click="demander(action)"
-          >
-            {{ action.commentaire ? `${action.label} *` : action.label }}{{ action.questionnaire ? " (formulaire)" : "" }}
-          </button>
-        </div>
+
+        <!-- Ce qui est attendu de moi, puis le reste, replié -->
+        <template v-else>
+          <div v-if="principales.length" class="status-actions">
+            <button
+              v-for="(action, i) in principales"
+              :key="action.code"
+              :class="i === 0 ? 'btn btn-primary' : 'btn'"
+              :disabled="enCours"
+              @click="demander(action)"
+            >
+              {{ action.label }}
+            </button>
+          </div>
+          <details v-if="secondaires.length" class="autres-actions" :open="!principales.length">
+            <summary>{{ principales.length ? "Autres actions" : "Actions possibles" }} ({{ secondaires.length }})</summary>
+            <div class="status-actions">
+              <button
+                v-for="action in secondaires"
+                :key="action.code"
+                class="btn btn-small"
+                :disabled="enCours"
+                @click="demander(action)"
+              >
+                {{ action.label }}
+              </button>
+            </div>
+          </details>
+        </template>
         <p class="form-error" role="alert">{{ erreur }}</p>
       </div>
 
@@ -227,33 +248,6 @@ async function copierLien() {
         </dl>
       </div>
 
-      <dl class="detail-grid">
-        <div>
-          <dt>Concerne</dt>
-          <dd>{{ t.catalogue.libelle }}<span class="dd-sub">{{ t.catalogue.chemin }}</span></dd>
-        </div>
-        <div>
-          <dt>Demandeur</dt>
-          <dd>{{ t.demandeur?.nom || "—" }}<span class="dd-sub">{{ t.etablissement?.nom || "" }}</span></dd>
-        </div>
-        <div>
-          <dt>Groupe</dt>
-          <dd><template v-if="t.groupe">{{ t.groupe.nom }}</template><span v-else class="muted">—</span></dd>
-        </div>
-        <div>
-          <dt>Affecté à</dt>
-          <dd><template v-if="t.intervenant">{{ t.intervenant.nom }}</template><span v-else class="muted">Personne</span></dd>
-        </div>
-        <div v-if="t.valideur">
-          <dt>Valideur</dt>
-          <dd>{{ t.valideur.nom }}</dd>
-        </div>
-        <div><dt>Statut EasyVista</dt><dd>{{ t.statut_ev }}</dd></div>
-        <div><dt>Échéance</dt><dd>{{ t.echeance ? formatDateTime(t.echeance) : "—" }}</dd></div>
-        <div><dt>Créé le</dt><dd>{{ formatDateTime(t.date_creation) }}</dd></div>
-        <div><dt>Mis à jour le</dt><dd>{{ formatDateTime(t.date_maj) }}</dd></div>
-      </dl>
-
       <div class="field">
         <span class="section-label">Historique</span>
         <ol class="events">
@@ -266,6 +260,36 @@ async function copierLien() {
             <div v-if="h.message" class="event-msg">{{ h.message }}</div>
           </li>
         </ol>
+      </div>
+
+      <div class="field">
+        <span class="section-label">Informations</span>
+        <dl class="detail-grid">
+          <div>
+            <dt>Concerne</dt>
+            <dd>{{ t.catalogue.libelle }}<span class="dd-sub">{{ t.catalogue.chemin }}</span></dd>
+          </div>
+          <div>
+            <dt>Demandeur</dt>
+            <dd>{{ t.demandeur?.nom || "—" }}<span class="dd-sub">{{ t.etablissement?.nom || "" }}</span></dd>
+          </div>
+          <div>
+            <dt>Groupe</dt>
+            <dd><template v-if="t.groupe">{{ t.groupe.nom }}</template><span v-else class="muted">—</span></dd>
+          </div>
+          <div>
+            <dt>Affecté à</dt>
+            <dd><template v-if="t.intervenant">{{ t.intervenant.nom }}</template><span v-else class="muted">Personne</span></dd>
+          </div>
+          <div v-if="t.valideur">
+            <dt>Valideur</dt>
+            <dd>{{ t.valideur.nom }}</dd>
+          </div>
+          <div><dt>Statut EasyVista</dt><dd>{{ t.statut_ev }}</dd></div>
+          <div><dt>Échéance</dt><dd>{{ t.echeance ? formatDateTime(t.echeance) : "—" }}</dd></div>
+          <div><dt>Créé le</dt><dd>{{ formatDateTime(t.date_creation) }}</dd></div>
+          <div><dt>Mis à jour le</dt><dd>{{ formatDateTime(t.date_maj) }}</dd></div>
+        </dl>
       </div>
     </div>
   </aside>
