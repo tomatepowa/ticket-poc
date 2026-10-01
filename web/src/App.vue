@@ -209,24 +209,6 @@ async function actualiserDetail() {
   }
 }
 
-// Remettre plusieurs tickets dans leur groupe (ex. intervenant absent).
-async function desaffecterLot(numeros) {
-  try {
-    const { reussis, resultats } = await api("/tickets/lot", {
-      method: "POST",
-      body: JSON.stringify({ action: "DESAFFECTER", numeros }),
-    });
-    const echecs = resultats.filter((r) => !r.ok);
-    toast(
-      `${reussis} ticket${reussis > 1 ? "s" : ""} remis dans leur groupe.` +
-        (echecs.length ? ` ${echecs.length} non modifié(s) : ${echecs.map((e) => `${e.numero} (${e.erreur})`).join(", ")}` : "")
-    );
-  } catch (err) {
-    toast(err.message);
-  }
-  await rafraichir().catch(() => {});
-}
-
 function onPopstate() {
   if (!moi.value) return;
   const id = ticketDansUrl();
@@ -276,12 +258,10 @@ function onKeydown(e) {
       <StatsTickets v-if="stats" :stats="stats" :profil="moi.profil" :filtres="filtres" :vues="vues" @filtrer="filtrer" />
       <TableTickets
         :tickets="tickets"
-        :selectionnable="moi.profil !== 'VALIDEUR'"
         :filtres="filtres"
         :vues="vues"
         :profil="moi.profil"
         @ouvrir="ouvrirDepuisListe"
-        @desaffecter="desaffecterLot"
         @filtrer="filtrer"
       />
     </main>

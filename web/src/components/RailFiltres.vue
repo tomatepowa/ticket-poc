@@ -23,15 +23,27 @@ const STATUTS = [
 ];
 
 const recherche = ref(props.filtres.q);
-// ---------- Groupe : avec le nombre de tickets de la vue ----------
-// Seuls les groupes qui ont des tickets (et celui sélectionné), du plus chargé au moins chargé.
-const groupesProposes = computed(() => {
-  const parGroupe = props.stats?.parGroupe || [];
-  return parGroupe
-    .filter((r) => r.n > 0 || String(r.groupe.id) === props.filtres.groupe)
-    .sort((a, b) => b.n - a.n || a.groupe.nom.localeCompare(b.groupe.nom, "fr"));
-});
-const totalGroupes = computed(() => (props.stats?.parGroupe || []).reduce((s, r) => s + r.n, 0));
+// ---------- Groupes : plusieurs cochés possibles, avec leur volume ----------
+// filtres.groupe = "2,7" (vide = tous). Seuls les groupes qui ont des tickets dans la
+// vue (et ceux cochés), cochés en tête puis du plus chargé au moins chargé.
+const groupesCoches = computed(() => new Set(String(props.filtres.groupe || "").split(",").filter(Boolean).map(Number)));
+const groupesProposes = computed(() =>
+  (props.stats?.parGroupe || [])
+    .filter((r) => r.total > 0 || groupesCoches.value.has(r.groupe.id))
+    .sort(
+      (a, b) =>
+        groupesCoches.value.has(b.groupe.id) - groupesCoches.value.has(a.groupe.id) ||
+        b.total - a.total ||
+        a.groupe.nom.localeCompare(b.groupe.nom, "fr")
+    )
+);
+
+function basculerGroupe(id) {
+  const ids = new Set(groupesCoches.value);
+  if (ids.has(id)) ids.delete(id);
+  else ids.add(id);
+  emit("filtrer", { groupe: [...ids].join(",") });
+}
 const filtrerRecherche = debounce((q) => emit("filtrer", { q }), 250);
 // Recherche posée depuis la liste (clic sur un intervenant) : le champ suit.
 watch(
@@ -182,15 +194,6 @@ function changerTheme() {
         <p class="vue-legende">✓ choix affiché à l'ouverture du portail</p>
       </div>
 
-      <!-- Groupe : pas pour les valideurs (ils ne voient que leurs validations). -->
-      <div v-if="moi.profil !== 'VALIDEUR'" class="rail-group">
-        <label for="f-groupe">Groupe</label>
-        <select id="f-groupe" :value="filtres.groupe" @change="emit('filtrer', { groupe: $event.target.value })">
-          <option value="">Tous ({{ totalGroupes }})</option>
-          <option v-for="r in groupesProposes" :key="r.groupe.id" :value="String(r.groupe.id)">{{ r.groupe.nom }} ({{ r.n }})</option>
-        </select>
-      </div>
-
       <div class="rail-group">
         <div class="rail-label-ligne">
           <span class="rail-label" id="l-etab">Établissements</span>
@@ -225,6 +228,29 @@ function changerTheme() {
               :title="`${volume(e.id).moi} affecté(s) à moi, ${volume(e.id).total} dans la vue`"
             >({{ volume(e.id).moi }}/{{ volume(e.id).total }})</span>
           </label>
+        </div>
+      </div>
+
+      <!-- Groupes : pas pour les valideurs (ils ne voient que leurs validations). -->
+      <div v-if="moi.profil !== 'VALIDEUR'" class="rail-group">
+        <div class="rail-label-ligne">
+          <span class="rail-label" id="l-groupes">Groupes</span>
+          <button v-if="groupesCoches.size" class="lien-rail" type="button" @click="emit('filtrer', { groupe: '' })">
+            Tout décocher ({{ groupesCoches.size }})
+          </button>
+        </div>
+        <div class="etab-liste" role="group" aria-labelledby="l-groupes">
+          <label
+            v-for="r in groupesProposes"
+            :key="r.groupe.id"
+            class="etab-item"
+            :class="{ 'is-coche': groupesCoches.has(r.groupe.id) }"
+          >
+            <input type="checkbox" :checked="groupesCoches.has(r.groupe.id)" @change="basculerGroupe(r.groupe.id)" />
+            <span class="etab-nom" :title="r.groupe.nom">{{ r.groupe.nom }}</span>
+            <span class="etab-compte" :title="`${r.moi} affecté(s) à moi, ${r.total} dans la vue`">({{ r.moi }}/{{ r.total }})</span>
+          </label>
+          <p v-if="!groupesProposes.length" class="etab-legende">Aucun ticket dans cette vue.</p>
         </div>
       </div>
 

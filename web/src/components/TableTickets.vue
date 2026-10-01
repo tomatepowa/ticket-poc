@@ -2,37 +2,40 @@
 // Liste des tickets. Un clic ouvre le detail ; Ctrl/Cmd/Maj + clic sur le n°
 // laisse le navigateur ouvrir le lien direct dans un nouvel onglet.
 // En-tetes cliquables : tri croissant, puis decroissant au deuxieme clic.
-// Selection multiple (equipes support) : remettre des tickets affectes dans leur groupe.
 // Groupe, affectation et etablissement sont cliquables : ils appliquent le filtre
 // correspondant (un second clic le retire). La legende au-dessus de la liste et les
 // pastilles d'affectation chargent la vue : a moi, a personne, a un autre.
-import { computed, ref, watch } from "vue";
+import { computed, ref } from "vue";
 import { PRIORITE_LABEL, formatCourt } from "../outils.js";
 
 const props = defineProps({
   tickets: { type: Array, required: true },
-  selectionnable: { type: Boolean, default: false },
   filtres: { type: Object, required: true },
   vues: { type: Array, required: true },
   profil: { type: String, required: true },
 });
-const emit = defineEmits(["ouvrir", "desaffecter", "filtrer"]);
+const emit = defineEmits(["ouvrir", "filtrer"]);
 
 // ---------- Filtres depuis la liste ----------
 
 const aVue = (code) => props.vues.some((v) => v.code === code);
 const libelleVue = (code) => props.vues.find((v) => v.code === code)?.label || code;
+const groupesCoches = computed(() => String(props.filtres.groupe || "").split(",").filter(Boolean).map(Number));
 const etablissementsCoches = computed(() => String(props.filtres.etablissement || "").split(",").filter(Boolean).map(Number));
 
 // Chaque filtre : possible pour ce profil ?, actif ?, changement qui l'active / le retire.
 const FILTRES = {
-  groupe: (t) => ({
-    possible: props.profil !== "VALIDEUR" && Boolean(t.groupe),
-    actif: props.filtres.groupe === String(t.groupe?.id),
-    activer: { groupe: String(t.groupe?.id) },
-    retirer: { groupe: "" },
-    libelle: `groupe « ${t.groupe?.nom} »`,
-  }),
+  groupe: (t) => {
+    const id = t.groupe?.id;
+    const coches = groupesCoches.value;
+    return {
+      possible: props.profil !== "VALIDEUR" && Boolean(id),
+      actif: coches.includes(id),
+      activer: { groupe: [...coches, id].join(",") },
+      retirer: { groupe: coches.filter((x) => x !== id).join(",") },
+      libelle: `groupe « ${t.groupe?.nom} »`,
+    };
+  },
   // Affectation (légende et pastilles) : la vue correspondante, si ce profil l'a.
   MOI: () => filtreVue("moi"),
   AUCUN: () => filtreVue("non_affectes"),
@@ -153,38 +156,8 @@ const ariaSort = (colonne) =>
   tri.value.colonne === colonne ? (tri.value.sens === "asc" ? "ascending" : "descending") : "none";
 const fleche = (colonne) => (tri.value.colonne === colonne ? (tri.value.sens === "asc" ? "▲" : "▼") : "");
 
-// ---------- Sélection multiple ----------
-
-// Seuls les tickets affectes a quelqu'un peuvent etre remis dans leur groupe.
-const eligible = (t) => t.affectation === "MOI" || t.affectation === "TIERS";
-const selection = ref(new Set());
-const eligibles = computed(() => props.tickets.filter(eligible));
-const toutCoche = computed(() => eligibles.value.length > 0 && eligibles.value.every((t) => selection.value.has(t.id)));
-
-// La liste change (filtres, synchro) : on ne garde que les tickets encore affiches et eligibles.
-watch(
-  () => props.tickets,
-  () => (selection.value = new Set(eligibles.value.filter((t) => selection.value.has(t.id)).map((t) => t.id)))
-);
-
-function basculer(t) {
-  const s = new Set(selection.value);
-  if (s.has(t.id)) s.delete(t.id);
-  else s.add(t.id);
-  selection.value = s;
-}
-
-function basculerTout() {
-  selection.value = toutCoche.value ? new Set() : new Set(eligibles.value.map((t) => t.id));
-}
-
-function desaffecter() {
-  emit("desaffecter", [...selection.value]);
-  selection.value = new Set();
-}
-
 function onClic(e, t) {
-  if (e.target.closest(".col-selection, .filtre-cellule")) return;
+  if (e.target.closest(".filtre-cellule")) return;
   if (e.target.closest("a") && (e.ctrlKey || e.metaKey || e.shiftKey || e.button === 1)) return;
   e.preventDefault();
   emit("ouvrir", t.id);
@@ -193,11 +166,6 @@ function onClic(e, t) {
 
 <template>
   <div class="barre-liste">
-    <div v-if="selection.size" class="barre-selection" role="region" aria-label="Tickets sélectionnés">
-      <strong>{{ selection.size }} ticket{{ selection.size > 1 ? "s" : "" }} sélectionné{{ selection.size > 1 ? "s" : "" }}</strong>
-      <button class="btn btn-small btn-primary" type="button" @click="desaffecter">Remettre dans leur groupe (non affectés)</button>
-      <button class="btn btn-small" type="button" @click="selection = new Set()">Annuler la sélection</button>
-    </div>
     <div class="legende-affectation" role="group" aria-label="Filtrer par affectation">
       <template v-for="[code, classe, texte] in LEGENDE" :key="code">
         <button
@@ -217,15 +185,6 @@ function onClic(e, t) {
     <table class="tickets">
       <thead>
         <tr>
-          <th v-if="selectionnable" class="col-selection">
-            <input
-              type="checkbox"
-              :checked="toutCoche"
-              :disabled="!eligibles.length"
-              aria-label="Sélectionner tous les tickets affectés"
-              @change="basculerTout"
-            />
-          </th>
           <th class="col-prio" :aria-sort="ariaSort('priorite')">
             <button type="button" class="tri" @click="trier('priorite')">Prio.<span class="fleche">{{ fleche("priorite") }}</span></button>
           </th>
@@ -249,15 +208,6 @@ function onClic(e, t) {
           @click="onClic($event, t)"
           @keydown.enter="emit('ouvrir', t.id)"
         >
-          <td v-if="selectionnable" class="col-selection">
-            <input
-              v-if="eligible(t)"
-              type="checkbox"
-              :checked="selection.has(t.id)"
-              :aria-label="`Sélectionner ${t.numero}`"
-              @change="basculer(t)"
-            />
-          </td>
           <td>
             <span class="prio" :class="`prio-${t.priorite}`" :title="PRIORITE_LABEL[t.priorite]">P{{ t.priorite }}</span>
           </td>

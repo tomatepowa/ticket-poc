@@ -190,6 +190,18 @@ describe("listes du portail (lues dans la base)", () => {
     assert.equal((await statut("")).length, 4);
   });
 
+  testPg("groupes : un ou plusieurs cochés, compteurs à moi / total par groupe", async () => {
+    const { source, u } = await monde();
+    const SD = F.GROUPE_SD.GROUP_ID;
+    const INFRA = F.GROUPE_INFRA.GROUP_ID;
+    const liste = async (groupe) => numeros(await source.listerTickets(u.isabelle, { vue: "groupes", statut: "ACTIFS", groupe }));
+    assert.deepEqual(await liste(String(INFRA)), [N.infra]);
+    assert.deepEqual(await liste(`${SD},${INFRA}`), [N.libre, N.karim, N.infra].sort());
+    // Les compteurs ignorent la sélection de groupes (sinon les autres tomberaient à 0).
+    const s = await source.stats(u.karim, { vue: "groupes", statut: "ACTIFS", groupe: String(INFRA) });
+    assert.deepEqual(s.parGroupe.find((g) => g.groupe.id === SD), { groupe: { id: SD, nom: F.GROUPE_SD.GROUP_FR }, moi: 1, total: 2 });
+  });
+
   testPg("recherche : par numéro ou par nom, sans tenir compte des accents", async () => {
     const { source, u } = await monde();
     assert.deepEqual(numeros(await source.listerTickets(u.isabelle, { vue: "groupes", q: N.infra })), [N.infra]);
@@ -214,7 +226,7 @@ describe("listes du portail (lues dans la base)", () => {
     for (const [code, n] of Object.entries(s.parVue)) {
       assert.equal((await source.listerTickets(u.marc, { vue: code, statut: "ACTIFS" })).length, n, `vue ${code}`);
     }
-    const parGroupe = Object.fromEntries((await source.stats(u.isabelle, { vue: "groupes", statut: "ACTIFS" })).parGroupe.map((g) => [g.groupe.id, g.n]));
+    const parGroupe = Object.fromEntries((await source.stats(u.isabelle, { vue: "groupes", statut: "ACTIFS" })).parGroupe.map((g) => [g.groupe.id, g.total]));
     assert.deepEqual(parGroupe, { [F.GROUPE_SD.GROUP_ID]: 2, [F.GROUPE_INFRA.GROUP_ID]: 1 });
   });
 });
@@ -325,17 +337,4 @@ describe("détail d'un ticket et actions", () => {
     assert.deepEqual(numeros(await source.listerTickets(u.julie, { vue: "groupes", statut: "ACTIFS" })), [N.libre, N.infra].sort());
   });
 
-  testPg("en lot : remettre dans le groupe, résultat ticket par ticket", async () => {
-    const { ev, source, u } = await monde();
-    const res = await source.executerLot(u.marc, { action: "DESAFFECTER", numeros: [N.karim, N.infra] });
-    assert.equal(res.reussis, 1);
-    assert.deepEqual(res.resultats.map((r) => [r.numero, r.ok]), [[N.karim, true], [N.infra, false]]);
-    assert.equal(ev.actionsDe(N.karim)[0].DONE_BY_ID, null);
-  });
-
-  testPg("en lot : action non prévue refusée", async () => {
-    const { source, u } = await monde();
-    const err = await erreurDe(source.executerLot(u.marc, { action: "TERMINER", numeros: [N.karim] }));
-    assert.equal(err.status, 400);
-  });
 });

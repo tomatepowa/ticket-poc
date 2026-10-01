@@ -37,7 +37,15 @@ const actifs = computed(() => {
     retirer: statutDefaut ? null : { statut: props.defauts.statut },
   });
   if (f.q) liste.push({ cle: "q", type: "Recherche", texte: `« ${f.q} »`, retirer: { q: "" } });
-  if (f.groupe) liste.push({ cle: "groupe", type: "Groupe", texte: nomGroupe(f.groupe), retirer: { groupe: "" } });
+  const groupes = String(f.groupe || "").split(",").filter(Boolean).map(Number);
+  for (const id of groupes) {
+    liste.push({
+      cle: `groupe-${id}`,
+      type: "Groupe",
+      texte: nomGroupe(id),
+      retirer: { groupe: groupes.filter((x) => x !== id).join(",") },
+    });
+  }
   const coches = String(f.etablissement || "").split(",").filter(Boolean).map(Number);
   for (const id of coches) {
     liste.push({

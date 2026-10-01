@@ -19,7 +19,7 @@
 //   listerGroupes()                      [{ id, nom }] groupes d'intervenants
 //   listerCatalogue(user)                [{ id, type, libelle, chemin }]
 //   listerTickets(user, filtres)         tickets VISIBLES par l'utilisateur
-//                                        filtres : vue, q, etablissement, groupe,
+//                                        filtres : vue, q, etablissement ("1,3"), groupe ("2,7"),
 //                                        statut ("" tous | ACTIFS | INACTIFS = resolus et clos)
 //   getTicket(user, rfc)                 ticket + historique + actions permises + progression
 //                                        action : { code, label, commentaire, parametre, secondaire }

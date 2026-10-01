@@ -131,7 +131,7 @@ function creerSource(client) {
 
   function vuesPour(u) {
     const vues = {
-      INTERVENANT: VUES_EQUIPES("Tickets de mes groupes"),
+      INTERVENANT: VUES_EQUIPES("Mes groupes"),
       SUPERVISEUR: VUES_EQUIPES("Tous les tickets"),
       VALIDEUR: [
         { code: "a_valider", label: "À valider" },
@@ -184,6 +184,8 @@ function creerSource(client) {
   // etablissement, qui doivent rester comparables quelle que soit la selection.
   function filtrerTickets(tickets, filtres, { ignorerEtablissements = false } = {}) {
     const q = filtres.q ? normaliser(filtres.q) : null;
+    // groupe : un ou plusieurs ids ("2,7"), comme les etablissements.
+    const groupes = String(filtres.groupe || "").split(",").map(Number).filter((n) => Number.isInteger(n) && n > 0);
     const etablissements = ignorerEtablissements
       ? []
       : String(filtres.etablissement || "")
@@ -192,7 +194,7 @@ function creerSource(client) {
           .filter((n) => Number.isInteger(n) && n > 0);
     return tickets
       .filter((t) => !etablissements.length || etablissements.includes(t.etablissement?.id))
-      .filter((t) => !filtres.groupe || t.groupe?.id === Number(filtres.groupe))
+      .filter((t) => !groupes.length || groupes.includes(t.groupe?.id))
       .filter((t) => avecStatut(t, filtres.statut))
       .filter((t) => !q || normaliser(`${t.numero} ${t.titre} ${t.demandeur?.nom} ${t.intervenant?.nom || ""}`).includes(q));
   }
@@ -584,27 +586,6 @@ function creerSource(client) {
       return ticketComplet(u, apres);
     },
 
-    // Stats de la liste affichee : memes vue et filtres que la liste.
-    // Meme action sur plusieurs tickets (ex. remettre dans leur groupe tous les
-    // tickets d'un intervenant absent). Chaque ticket passe par executerAction :
-    // memes droits, meme trace. Resultat ticket par ticket.
-    async executerLot(u, { action, numeros, commentaire } = {}) {
-      const permises = ["DESAFFECTER"];
-      if (!permises.includes(action)) throw new ErreurSource(400, "Action non disponible en lot");
-      if (!Array.isArray(numeros) || !numeros.length) throw new ErreurSource(400, "Aucun ticket sélectionné");
-      if (numeros.length > 200) throw new ErreurSource(400, "200 tickets au maximum par lot");
-      const resultats = [];
-      for (const numero of numeros) {
-        try {
-          await this.executerAction(u, String(numero), { action, commentaire });
-          resultats.push({ numero, ok: true });
-        } catch (err) {
-          resultats.push({ numero, ok: false, erreur: err.message });
-        }
-      }
-      return { reussis: resultats.filter((r) => r.ok).length, resultats };
-    },
-
     async stats(u, filtres = {}) {
       const visibles = await ticketsVisibles(u);
 
@@ -654,12 +635,12 @@ function creerSource(client) {
         parEtablissement: [...parEtablissement.values()],
         parFiltreStatut,
         parVue,
-        // Tickets par groupe (liste du filtre Groupe) : vue et filtres affichés,
-        // sauf le groupe lui-même (sinon les autres groupes tomberaient à 0).
-        parGroupe: (await groupesIntervention()).map((g) => ({
-          groupe: g,
-          n: horsGroupe.filter((t) => t.groupe?.id === g.id).length,
-        })),
+        // Tickets par groupe (à moi / total), comme les établissements : vue et
+        // filtres affichés, sauf la sélection de groupes (sinon les autres tomberaient à 0).
+        parGroupe: (await groupesIntervention()).map((g) => {
+          const duGroupe = horsGroupe.filter((t) => t.groupe?.id === g.id);
+          return { groupe: g, moi: duGroupe.filter((t) => t.affectation === "MOI").length, total: duGroupe.length };
+        }),
       };
     },
   };
