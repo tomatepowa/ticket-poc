@@ -746,6 +746,8 @@ a.num-link:hover { color: var(--accent); text-decoration: underline; }
 }
 .vue-item:hover { background: var(--rail-field); }
 .vue-item[aria-pressed="true"] { background: #E6EDEB; color: #15211F; font-weight: 600; }
+.vue-item { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.vue-compte { font-size: 12px; font-variant-numeric: tabular-nums; opacity: 0.7; font-weight: 500; }
 
 .rail-group[hidden] { display: none; }
 

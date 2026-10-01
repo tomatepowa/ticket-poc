@@ -219,7 +219,7 @@ function actionsPossibles(u, ctx) {
       // Seul ce qu'on attend de MOI est une action principale : prendre un ticket
       // non affecte, ou traiter un ticket qui m'est affecte. Le reste (ticket d'un
       // collegue, reaffectation, transfert) est possible mais "secondaire", pour ne
-      // pas remplir la vue "Attendent mon action".
+      // pas compter parmi les tickets qui attendent mon action (ligne mise en avant).
       const aMoi = r.assigne(p);
       const affecte = Boolean(idAuteur(p));
       const autrui = affecte && !aMoi;

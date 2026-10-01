@@ -17,10 +17,8 @@
 //   listerGroupes()                      [{ id, nom }] groupes d'intervenants
 //   listerCatalogue(user)                [{ id, type, libelle, chemin }]
 //   listerTickets(user, filtres)         tickets VISIBLES par l'utilisateur
-//                                        filtres : vue, q, etablissement, groupe, statut,
-//                                        affectation (MOI | TIERS | AUCUN, vue de l'utilisateur),
-//                                        retard ("1" : tickets en retard seulement)
-//                                        statut : un code, "ACTIFS", ou plusieurs codes "OUVERT,EN_COURS"
+//                                        filtres : vue, q, etablissement, groupe,
+//                                        statut ("" tous | ACTIFS | INACTIFS = resolus et clos)
 //   getTicket(user, rfc)                 ticket + historique + actions permises + progression
 //                                        action : { code, label, commentaire, parametre, secondaire }
 //   creerTicket(user, data)              cree le ticket au nom de l'utilisateur

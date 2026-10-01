@@ -4,8 +4,8 @@
 // En-tetes cliquables : tri croissant, puis decroissant au deuxieme clic.
 // Selection multiple (equipes support) : remettre des tickets affectes dans leur groupe.
 // Groupe, affectation et etablissement sont cliquables : ils appliquent le filtre
-// correspondant (un second clic le retire). La legende au-dessus de la liste filtre
-// par affectation : a moi, a un autre, a personne.
+// correspondant (un second clic le retire). La legende au-dessus de la liste et les
+// pastilles d'affectation chargent la vue : a moi, a personne, a un autre.
 import { computed, ref, watch } from "vue";
 import { PRIORITE_LABEL, formatCourt } from "../outils.js";
 
@@ -33,12 +33,10 @@ const FILTRES = {
     retirer: { groupe: "" },
     libelle: `groupe « ${t.groupe?.nom} »`,
   }),
-  // Affectation de l'étape en cours (légende et pastilles « Moi » / « Non affecté ») :
-  // « Moi » et « Non affecté » chargent la vue du rail quand le profil l'a,
-  // sinon (et pour « Affecté à un autre ») un filtre d'affectation.
-  MOI: () => filtreAffectation("MOI", "moi", "affectés à moi"),
-  AUCUN: () => filtreAffectation("AUCUN", "non_affectes", "non affectés"),
-  TIERS: () => filtreAffectation("TIERS", null, "affectés à un autre"),
+  // Affectation (légende et pastilles) : la vue correspondante, si ce profil l'a.
+  MOI: () => filtreVue("moi"),
+  AUCUN: () => filtreVue("non_affectes"),
+  TIERS: () => filtreVue("autres"),
   // Un collègue : la recherche porte aussi sur le nom de l'intervenant.
   intervenant: (t) => ({
     possible: Boolean(t.intervenant?.nom),
@@ -60,25 +58,13 @@ const FILTRES = {
   },
 };
 
-const VUES_AFFECTATION = ["moi", "non_affectes"];
-function filtreAffectation(code, vue, libelle) {
-  if (vue && aVue(vue)) {
-    return {
-      possible: true,
-      actif: props.filtres.vue === vue,
-      activer: { vue, affectation: "" },
-      retirer: { vue: props.vues[0].code },
-      libelle: `vue « ${libelleVue(vue)} »`,
-    };
-  }
-  // Filtre d'affectation : on quitte une vue « Moi » / « Non affectés » qui le contredirait.
-  const vueContraire = VUES_AFFECTATION.includes(props.filtres.vue);
+function filtreVue(vue) {
   return {
-    possible: true,
-    actif: props.filtres.affectation === code,
-    activer: { affectation: code, ...(vueContraire ? { vue: props.vues[0].code } : {}) },
-    retirer: { affectation: "" },
-    libelle,
+    possible: aVue(vue),
+    actif: props.filtres.vue === vue,
+    activer: { vue },
+    retirer: { vue: props.vues[0].code },
+    libelle: `vue « ${libelleVue(vue)} »`,
   };
 }
 
@@ -213,16 +199,18 @@ function onClic(e, t) {
       <button class="btn btn-small" type="button" @click="selection = new Set()">Annuler la sélection</button>
     </div>
     <div class="legende-affectation" role="group" aria-label="Filtrer par affectation">
-      <button
-        v-for="[code, classe, texte] in LEGENDE"
-        :key="code"
-        type="button"
-        class="affecte filtre-cellule"
-        :class="[classe, { 'is-actif': filtre(code).actif }]"
-        :aria-pressed="filtre(code).actif"
-        :title="titreFiltre(code)"
-        @click="appliquer(code)"
-      >{{ texte }}</button>
+      <template v-for="[code, classe, texte] in LEGENDE" :key="code">
+        <button
+          v-if="filtre(code).possible"
+          type="button"
+          class="affecte filtre-cellule"
+          :class="[classe, { 'is-actif': filtre(code).actif }]"
+          :aria-pressed="filtre(code).actif"
+          :title="titreFiltre(code)"
+          @click="appliquer(code)"
+        >{{ texte }}</button>
+        <span v-else class="affecte" :class="classe">{{ texte }}</span>
+      </template>
     </div>
   </div>
   <section class="table-wrap">

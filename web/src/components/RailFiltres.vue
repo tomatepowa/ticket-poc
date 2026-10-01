@@ -16,11 +16,7 @@ const emit = defineEmits(["filtrer", "deconnecter"]);
 const STATUTS = [
   { code: "", label: "Tous" },
   { code: "ACTIFS", label: "Actifs" }, // tout sauf résolu et clôturé
-  { code: "OUVERT", label: "À traiter" },
-  { code: "EN_COURS", label: "En cours" },
-  { code: "EN_ATTENTE", label: "En attente" },
-  { code: "RESOLU", label: "Résolu" },
-  { code: "CLOTURE", label: "Clôturé" },
+  { code: "INACTIFS", label: "Inactifs" }, // résolus et clôturés
 ];
 
 const recherche = ref(props.filtres.q);
@@ -127,7 +123,8 @@ function changerTheme() {
             :aria-pressed="v.code === filtres.vue"
             @click="emit('filtrer', { vue: v.code })"
           >
-            {{ v.label }}
+            <span>{{ v.label }}</span>
+            <span v-if="stats?.parVue" class="vue-compte">{{ stats.parVue[v.code] ?? 0 }}</span>
           </button>
         </div>
       </div>

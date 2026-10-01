@@ -155,79 +155,64 @@ describe("synchronisation EV -> base", () => {
 // ---------- Listes, filtres et stats ----------
 
 describe("listes du portail (lues dans la base)", () => {
-  testPg("intervenant : la file de ses groupes seulement", async () => {
+  testPg("« Tickets de mes groupes » : en cours et terminés de mes groupes, pas ceux des autres", async () => {
     const { source, u } = await monde();
-    const file = await source.listerTickets(u.marc, { vue: "groupes" });
-    assert.deepEqual(numeros(file), [N.libre, N.karim].sort());
+    assert.deepEqual(numeros(await source.listerTickets(u.marc, { vue: "groupes" })), [N.libre, N.karim, N.resolu].sort());
+    assert.deepEqual(numeros(await source.listerTickets(u.marc, { vue: "groupes", statut: "ACTIFS" })), [N.libre, N.karim].sort());
   });
 
   testPg("superviseur : tous les tickets, sauf les clos de plus de 30 jours", async () => {
     const { source, u } = await monde();
-    const tout = await source.listerTickets(u.isabelle, { vue: "tout" });
+    const tout = await source.listerTickets(u.isabelle, { vue: "groupes" });
     assert.deepEqual(numeros(tout), [N.libre, N.karim, N.infra, N.resolu].sort());
   });
 
-  testPg("vues « non affectés » et « affectés à moi »", async () => {
+  testPg("« Mes tickets », « Non affectés », « Affectés à un autre »", async () => {
     const { source, u } = await monde();
-    assert.deepEqual(numeros(await source.listerTickets(u.marc, { vue: "non_affectes" })), [N.libre]);
-    assert.deepEqual(numeros(await source.listerTickets(u.karim, { vue: "moi" })), [N.karim]);
+    const vue = async (qui, code, statut = "") => numeros(await source.listerTickets(u[qui], { vue: code, statut }));
+    assert.deepEqual(await vue("marc", "non_affectes"), [N.libre]);
+    assert.deepEqual(await vue("karim", "moi"), [N.karim]);
+    // Ticket résolu : reste dans « Mes tickets » de celui qui l'a traité.
+    assert.deepEqual(await vue("marc", "moi"), [N.resolu]);
+    assert.deepEqual(await vue("marc", "moi", "ACTIFS"), []);
+    assert.deepEqual(await vue("marc", "autres"), [N.karim]);
+    assert.deepEqual(await vue("karim", "autres"), [N.resolu]);
+    assert.deepEqual(await vue("isabelle", "non_affectes"), [N.libre, N.infra].sort());
   });
 
-  testPg("filtre d'affectation (légende de la liste) : à moi, à un autre, à personne", async () => {
+  testPg("statuts : tous, actifs, inactifs (résolus et clôturés)", async () => {
     const { source, u } = await monde();
-    assert.deepEqual(numeros(await source.listerTickets(u.isabelle, { vue: "tout", affectation: "AUCUN" })), [N.libre, N.infra].sort());
-    assert.deepEqual(numeros(await source.listerTickets(u.marc, { vue: "groupes", affectation: "TIERS" })), [N.karim]);
-    assert.deepEqual(numeros(await source.listerTickets(u.karim, { vue: "groupes", affectation: "MOI" })), [N.karim]);
-    assert.deepEqual(numeros(await source.listerTickets(u.marc, { vue: "groupes", affectation: "MOI" })), []);
-    const s = await source.stats(u.isabelle, { vue: "tout", affectation: "AUCUN" });
-    assert.equal(s.parFiltreStatut[""], 2, "les compteurs de statut suivent le filtre");
-  });
-
-  testPg("cartes de stats : plusieurs statuts à la fois, et tickets en retard", async () => {
-    const { ev, synchro, source, u } = await monde();
-    const enCours = await source.listerTickets(u.isabelle, { vue: "tout", statut: "OUVERT,EN_COURS" });
-    assert.deepEqual(numeros(enCours), [N.libre, N.karim, N.infra].sort());
-
-    ev.modifier(N.karim, { MAX_RESOLUTION_DATE_UT: F.ilYa(1) });
-    ev.modifier(N.resolu, { MAX_RESOLUTION_DATE_UT: F.ilYa(1) }); // résolu : jamais « en retard »
-    await synchro.executer();
-    assert.deepEqual(numeros(await source.listerTickets(u.isabelle, { vue: "tout", retard: "1" })), [N.karim]);
-    const s = await source.stats(u.isabelle, { vue: "tout", retard: "1" });
-    assert.equal(s.total, 1);
-    assert.equal(s.en_retard, 1);
-  });
-
-  testPg("filtre de statut : « Actifs » exclut les résolus et clos, un statut précis ne garde que lui", async () => {
-    const { source, u } = await monde();
-    const actifs = await source.listerTickets(u.isabelle, { vue: "tout", statut: "ACTIFS" });
-    assert.deepEqual(numeros(actifs), [N.libre, N.karim, N.infra].sort());
-    const resolus = await source.listerTickets(u.isabelle, { vue: "tout", statut: "RESOLU" });
-    assert.deepEqual(numeros(resolus), [N.resolu]);
+    const statut = async (code) => numeros(await source.listerTickets(u.isabelle, { vue: "groupes", statut: code }));
+    assert.deepEqual(await statut("ACTIFS"), [N.libre, N.karim, N.infra].sort());
+    assert.deepEqual(await statut("INACTIFS"), [N.resolu]);
+    assert.equal((await statut("")).length, 4);
   });
 
   testPg("recherche : par numéro ou par nom, sans tenir compte des accents", async () => {
     const { source, u } = await monde();
-    assert.deepEqual(numeros(await source.listerTickets(u.isabelle, { vue: "tout", q: N.infra })), [N.infra]);
-    assert.deepEqual(numeros(await source.listerTickets(u.isabelle, { vue: "tout", q: "benali" })), [N.karim]);
-    assert.deepEqual(numeros(await source.listerTickets(u.isabelle, { vue: "tout", q: "LEFEVRE" })), []);
+    assert.deepEqual(numeros(await source.listerTickets(u.isabelle, { vue: "groupes", q: N.infra })), [N.infra]);
+    assert.deepEqual(numeros(await source.listerTickets(u.isabelle, { vue: "groupes", q: "benali" })), [N.karim]);
+    assert.deepEqual(numeros(await source.listerTickets(u.isabelle, { vue: "groupes", q: "LEFEVRE" })), []);
   });
 
   testPg("vue non disponible pour ce profil : refusée", async () => {
     const { source, u } = await monde();
-    const err = await erreurDe(source.listerTickets(u.marc, { vue: "tout" }));
+    const err = await erreurDe(source.listerTickets(u.marc, { vue: "a_valider" }));
     assert.ok(err instanceof ErreurSource);
     assert.equal(err.status, 400);
   });
 
-  testPg("stats : les compteurs des boutons de statut correspondent aux listes", async () => {
+  testPg("stats : compteurs des statuts et des vues, cohérents avec les listes", async () => {
     const { source, u } = await monde();
-    const s = await source.stats(u.isabelle, { vue: "tout", statut: "ACTIFS" });
-    assert.equal(s.total, 3);
-    assert.equal(s.parFiltreStatut[""], 4);
-    assert.equal(s.parFiltreStatut.ACTIFS, 3);
-    assert.equal(s.parFiltreStatut.RESOLU, 1);
-    assert.equal(s.parFiltreStatut.OUVERT, 2);
-    const parGroupe = Object.fromEntries(s.parGroupe.map((g) => [g.groupe.id, g.n]));
+    const s = await source.stats(u.marc, { vue: "groupes", statut: "ACTIFS" });
+    assert.equal(s.total, 2);
+    assert.deepEqual(s.parFiltreStatut, { "": 3, ACTIFS: 2, INACTIFS: 1 });
+    // Chaque vue compte avec les mêmes filtres (ici : actifs), quelle que soit la vue affichée.
+    assert.deepEqual(s.parVue, { groupes: 2, moi: 0, non_affectes: 1, autres: 1 });
+    for (const [code, n] of Object.entries(s.parVue)) {
+      assert.equal((await source.listerTickets(u.marc, { vue: code, statut: "ACTIFS" })).length, n, `vue ${code}`);
+    }
+    const parGroupe = Object.fromEntries((await source.stats(u.isabelle, { vue: "groupes", statut: "ACTIFS" })).parGroupe.map((g) => [g.groupe.id, g.n]));
     assert.deepEqual(parGroupe, { [F.GROUPE_SD.GROUP_ID]: 2, [F.GROUPE_INFRA.GROUP_ID]: 1 });
   });
 });
@@ -263,7 +248,7 @@ describe("détail d'un ticket et actions", () => {
     const { ev, source, u } = await monde();
     await source.executerAction(u.marc, N.libre, { action: "PRENDRE" });
     assert.equal(ev.actionsDe(N.libre)[0].DONE_BY_ID, EMP.marc.EMPLOYEE_ID);
-    assert.deepEqual(numeros(await source.listerTickets(u.marc, { vue: "moi" })), [N.libre]);
+    assert.deepEqual(numeros(await source.listerTickets(u.marc, { vue: "moi", statut: "ACTIFS" })), [N.libre]);
   });
 
   testPg("réaffecter à un collègue : transmis à EV et tracé dans l'historique", async () => {
@@ -304,8 +289,8 @@ describe("détail d'un ticket et actions", () => {
     const { source, u } = await monde();
     const res = await source.executerAction(u.marc, N.libre, { action: "TRANSFERER", groupe_id: F.GROUPE_INFRA.GROUP_ID, commentaire: "Pour l'infra" });
     assert.equal(res.masque, undefined, "je reste dans l'historique du ticket, je le vois encore");
-    assert.deepEqual(numeros(await source.listerTickets(u.marc, { vue: "groupes" })), [N.karim]);
-    assert.deepEqual(numeros(await source.listerTickets(u.julie, { vue: "groupes" })), [N.libre, N.infra].sort());
+    assert.deepEqual(numeros(await source.listerTickets(u.marc, { vue: "groupes", statut: "ACTIFS" })), [N.karim]);
+    assert.deepEqual(numeros(await source.listerTickets(u.julie, { vue: "groupes", statut: "ACTIFS" })), [N.libre, N.infra].sort());
   });
 
   testPg("en lot : remettre dans le groupe, résultat ticket par ticket", async () => {

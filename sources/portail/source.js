@@ -118,21 +118,19 @@ function creerSource(client) {
     return res;
   }
 
+  // Vues des equipes : les tickets de mes groupes (tous pour un superviseur),
+  // decoupes par affectation : a moi, a personne, a un autre.
+  const VUES_EQUIPES = (premiere) => [
+    { code: "groupes", label: premiere },
+    { code: "moi", label: "Mes tickets" },
+    { code: "non_affectes", label: "Non affectés" },
+    { code: "autres", label: "Affectés à un autre" },
+  ];
+
   function vuesPour(u) {
     const vues = {
-      INTERVENANT: [
-        { code: "groupes", label: "File de mes groupes" },
-        { code: "non_affectes", label: "Non affectés de mes groupes" },
-        { code: "moi", label: "Affectés à moi" },
-        { code: "action", label: "Attendent mon action" },
-      ],
-      SUPERVISEUR: [
-        { code: "tout", label: "Tous les tickets" },
-        { code: "non_affectes", label: "Non affectés" },
-        { code: "moi", label: "Affectés à moi" },
-        { code: "action", label: "Attendent mon action" },
-        { code: "a_valider", label: "En attente de validation" },
-      ],
+      INTERVENANT: VUES_EQUIPES("Tickets de mes groupes"),
+      SUPERVISEUR: VUES_EQUIPES("Tous les tickets"),
       VALIDEUR: [
         { code: "a_valider", label: "À valider" },
         { code: "tout", label: "Mes validations" },
@@ -142,16 +140,27 @@ function creerSource(client) {
     return vues;
   }
 
+  // Intervenant d'un ticket : celui de l'etape en cours ; pour un ticket resolu ou
+  // clos (plus d'etape en cours), celui qui l'a traite en dernier.
+  function intervenantDe(ctx) {
+    if (ctx.principale) return M.idAuteur(ctx.principale);
+    const traite = [...ctx.actions].reverse().find((a) => M.etapeWorkflow(a)?.nature === "TRAITEMENT" && M.idAuteur(a));
+    return traite ? M.idAuteur(traite) : null;
+  }
+
   function filtreVue(u, ctx, vue) {
     const r = M.roles(u, ctx);
     const p = ctx.principale;
+    // Groupe du ticket (traitement en cours, sinon dernier groupe intervenu) parmi les miens.
+    const dansMesGroupes = r.superviseur || (ctx.groupe && r.mesGroupes.has(ctx.groupe.id));
+    const intervenant = intervenantDe(ctx);
     switch (vue) {
       case "tout":
         return true;
-      case "moi":
-        return Boolean(p) && r.assigne(p);
       case "groupes":
-        return Boolean(p) && r.mesGroupes.has(M.idGroupe(p));
+        return Boolean(dansMesGroupes);
+      case "moi":
+        return intervenant === u.id;
       case "non_affectes":
         // Traitement en attente de prise en charge, dans mes groupes (tous pour un superviseur).
         return (
@@ -159,8 +168,8 @@ function creerSource(client) {
           !M.idAuteur(p) &&
           (r.superviseur || r.mesGroupes.has(M.idGroupe(p)))
         );
-      case "action":
-        return M.attendMonAction(u, ctx);
+      case "autres":
+        return Boolean(dansMesGroupes) && Boolean(intervenant) && intervenant !== u.id;
       case "a_valider":
         return ctx.tc?.nature === "VALIDATION" && (r.assigne(p) || r.superviseur);
       default:
@@ -168,8 +177,7 @@ function creerSource(client) {
     }
   }
 
-  // Filtres du rail (recherche, etablissements, groupe, statut) et de la liste
-  // (affectation de l'etape en cours : a moi, a un autre, a personne) appliques a des
+  // Filtres du rail (recherche, etablissements, groupe, statut) appliques a des
   // tickets deja mis en forme. ignorerEtablissements : pour les compteurs par
   // etablissement, qui doivent rester comparables quelle que soit la selection.
   function filtrerTickets(tickets, filtres, { ignorerEtablissements = false } = {}) {
@@ -183,11 +191,23 @@ function creerSource(client) {
     return tickets
       .filter((t) => !etablissements.length || etablissements.includes(t.etablissement?.id))
       .filter((t) => !filtres.groupe || t.groupe?.id === Number(filtres.groupe))
-      .filter((t) => !filtres.affectation || t.affectation === filtres.affectation)
-      // "ACTIFS" : tout sauf resolu et cloture ; sinon un ou plusieurs statuts ("OUVERT,EN_COURS").
-      .filter((t) => !filtres.statut || (filtres.statut === "ACTIFS" ? !TERMINES.includes(t.statut) : filtres.statut.split(",").includes(t.statut)))
-      .filter((t) => filtres.retard !== "1" || t.en_retard)
+      .filter((t) => avecStatut(t, filtres.statut))
       .filter((t) => !q || normaliser(`${t.numero} ${t.titre} ${t.demandeur?.nom} ${t.intervenant?.nom || ""}`).includes(q));
+  }
+
+  // Statut de la liste : "" tous, "ACTIFS" (en cours), "INACTIFS" (resolus et clos).
+  // Un statut precis du portail (OUVERT...) reste accepte par l'API.
+  function avecStatut(t, statut) {
+    if (!statut) return true;
+    if (statut === "ACTIFS") return !TERMINES.includes(t.statut);
+    if (statut === "INACTIFS") return TERMINES.includes(t.statut);
+    return t.statut === statut;
+  }
+
+  // Tickets visibles, analyses ET mis en forme : [{ ctx, t }].
+  async function ticketsVisibles(u) {
+    const titres = await titresCatalogue();
+    return (await contextesVisibles(u)).map((ctx) => ({ ctx, t: M.versTicket(ctx, u, titres) }));
   }
 
   // Tickets du cache visibles par l'utilisateur, analyses.
@@ -364,11 +384,7 @@ function creerSource(client) {
       const vues = vuesPour(u);
       const vue = filtres.vue || vues[0].code;
       if (!vues.some((v) => v.code === vue)) throw new ErreurSource(400, "Vue non disponible");
-      const titres = await titresCatalogue();
-
-      const tickets = (await contextesVisibles(u))
-        .filter((ctx) => filtreVue(u, ctx, vue))
-        .map((ctx) => M.versTicket(ctx, u, titres));
+      const tickets = (await ticketsVisibles(u)).filter(({ ctx }) => filtreVue(u, ctx, vue)).map(({ t }) => t);
       return filtrerTickets(tickets, filtres).sort((a, b) => String(b.date_creation).localeCompare(String(a.date_creation)));
     },
 
@@ -562,16 +578,15 @@ function creerSource(client) {
     },
 
     async stats(u, filtres = {}) {
-      const titres = await titresCatalogue();
       const mesGroupes = new Set(u.groupes.map((g) => g.id));
+      const visibles = await ticketsVisibles(u);
 
       // Compteurs par etablissement (a moi / de mes groupes) : tous les tickets
       // visibles, filtres par recherche / groupe / statut mais PAS par la vue ni
       // par la selection d'etablissements (sinon les non-coches tomberaient a 0).
       // Sans filtre de statut : seulement les tickets en cours.
-      const tous = (await contextesVisibles(u)).map((ctx) => M.versTicket(ctx, u, titres));
       const parEtablissement = new Map();
-      for (const t of filtrerTickets(tous, filtres, { ignorerEtablissements: true })) {
+      for (const t of filtrerTickets(visibles.map(({ t }) => t), filtres, { ignorerEtablissements: true })) {
         if (!filtres.statut && TERMINES.includes(t.statut)) continue;
         if (!t.etablissement) continue;
         const e = parEtablissement.get(t.etablissement.id) || { id: t.etablissement.id, moi: 0, groupes: 0 };
@@ -585,10 +600,18 @@ function creerSource(client) {
       // Compteurs des boutons de statut : meme vue et memes filtres, SAUF le statut
       // (sinon tous les autres boutons afficheraient 0).
       const sansStatut = await this.listerTickets(u, { ...filtres, statut: "" });
-      const parFiltreStatut = { "": sansStatut.length, ACTIFS: 0 };
-      for (const t of sansStatut) {
-        parFiltreStatut[t.statut] = (parFiltreStatut[t.statut] || 0) + 1;
-        if (!TERMINES.includes(t.statut)) parFiltreStatut.ACTIFS++;
+      const parFiltreStatut = {
+        "": sansStatut.length,
+        ACTIFS: sansStatut.filter((t) => avecStatut(t, "ACTIFS")).length,
+        INACTIFS: sansStatut.filter((t) => avecStatut(t, "INACTIFS")).length,
+      };
+
+      // Compteurs des vues (rail et cartes) : memes filtres, chaque vue.
+      const filtresHorsVue = filtrerTickets(visibles.map(({ t }) => t), filtres);
+      const retenus = new Set(filtresHorsVue.map((t) => t.id));
+      const parVue = {};
+      for (const v of vuesPour(u)) {
+        parVue[v.code] = visibles.filter(({ ctx, t }) => retenus.has(t.id) && filtreVue(u, ctx, v.code)).length;
       }
       const ouverts = tickets.filter((t) => !TERMINES.includes(t.statut));
       const parStatut = {};
@@ -600,6 +623,7 @@ function creerSource(client) {
         attendent_mon_action: tickets.filter((t) => t.attend_mon_action).length,
         parEtablissement: [...parEtablissement.values()],
         parFiltreStatut,
+        parVue,
         parGroupe: (await groupesIntervention()).map((g) => ({
           groupe: g,
           n: ouverts.filter((t) => t.groupe?.id === g.id).length,
