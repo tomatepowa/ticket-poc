@@ -22,6 +22,8 @@ const STATUTS = [
 ];
 
 const recherche = ref(props.filtres.q);
+// Filtre de groupe : superviseur (tous les groupes) ou membre de plusieurs groupes.
+const filtreGroupeUtile = computed(() => props.moi.profil === "SUPERVISEUR" || (props.moi.profil !== "VALIDEUR" && props.moi.groupes.length > 1));
 const filtrerRecherche = debounce((q) => emit("filtrer", { q }), 250);
 // Recherche posée depuis la liste (clic sur un intervenant) : le champ suit.
 watch(
@@ -167,7 +169,9 @@ function changerTheme() {
         </div>
       </div>
 
-      <div v-if="moi.profil !== 'VALIDEUR'" class="rail-group">
+      <!-- Groupe : inutile pour qui n'appartient qu'à un groupe (le clic sur un badge de groupe
+           de la liste reste possible), et pour les valideurs. -->
+      <div v-if="filtreGroupeUtile" class="rail-group">
         <label for="f-groupe">Groupe</label>
         <select id="f-groupe" :value="filtres.groupe" @change="emit('filtrer', { groupe: $event.target.value })">
           <option value="">Tous</option>
