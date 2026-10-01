@@ -613,6 +613,10 @@ function creerSource(client) {
       // non-coches tomberaient a 0).
       const parEtablissement = new Map();
       const vueAffichee = filtres.vue || vuesPour(u)[0].code;
+      const horsGroupe = filtrerTickets(
+        visibles.filter(({ ctx }) => filtreVue(u, ctx, vueAffichee)).map(({ t }) => t),
+        { ...filtres, groupe: "" }
+      );
       const deLaVue = visibles.filter(({ ctx }) => filtreVue(u, ctx, vueAffichee)).map(({ t }) => t);
       for (const t of filtrerTickets(deLaVue, filtres, { ignorerEtablissements: true })) {
         if (!t.etablissement) continue;
@@ -640,7 +644,6 @@ function creerSource(client) {
       for (const v of vuesPour(u)) {
         parVue[v.code] = visibles.filter(({ ctx, t }) => retenus.has(t.id) && filtreVue(u, ctx, v.code)).length;
       }
-      const ouverts = tickets.filter((t) => !TERMINES.includes(t.statut));
       const parStatut = {};
       tickets.forEach((t) => (parStatut[t.statut] = (parStatut[t.statut] || 0) + 1));
       return {
@@ -651,9 +654,11 @@ function creerSource(client) {
         parEtablissement: [...parEtablissement.values()],
         parFiltreStatut,
         parVue,
+        // Tickets par groupe (liste du filtre Groupe) : vue et filtres affichés,
+        // sauf le groupe lui-même (sinon les autres groupes tomberaient à 0).
         parGroupe: (await groupesIntervention()).map((g) => ({
           groupe: g,
-          n: ouverts.filter((t) => t.groupe?.id === g.id).length,
+          n: horsGroupe.filter((t) => t.groupe?.id === g.id).length,
         })),
       };
     },
