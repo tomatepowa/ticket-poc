@@ -1036,7 +1036,7 @@ table.tickets tr.needs-action td:first-child { box-shadow: inset 3px 0 0 var(--a
 .two-lines .affecte { display: block; width: fit-content; }
 .affecte-moi { background: var(--accent); color: var(--on-accent); font-weight: 600; }
 .affecte-tiers { background: var(--surface-2); border-color: var(--line); color: var(--ink-soft); }
-.affecte-aucun { border: 1px dashed var(--st-encours); color: var(--st-encours); }
+.affecte-aucun { background: var(--st-ouvert-bg); border-color: var(--st-ouvert); color: var(--st-ouvert); font-weight: 600; }
 /* Groupe, affectation, etablissement cliquables dans la liste : appliquent le filtre du rail */
 button.filtre-cellule {
   font: inherit;
@@ -1049,7 +1049,6 @@ button.filtre-cellule {
   transition: box-shadow 0.1s ease, filter 0.1s ease;
 }
 button.badge-equipe.filtre-cellule { border: none; }
-button.affecte-aucun.filtre-cellule { background: transparent; }
 button.filtre-cellule.sub {
   background: none;
   border: none;
@@ -1068,6 +1067,8 @@ button.filtre-cellule.sub.is-actif { box-shadow: none; color: var(--accent-stron
 button.filtre-cellule:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 table.tickets tbody tr.ligne-moi { background: color-mix(in srgb, var(--accent-soft) 55%, transparent); }
 table.tickets tbody tr.ligne-moi:hover { background: var(--hover); }
+/* Ticket que personne n'a pris : barre rose (la barre « à traiter » reste prioritaire) */
+table.tickets tr.ligne-aucun:not(.needs-action) td:first-child { box-shadow: inset 3px 0 0 var(--st-ouvert); }
 
 
 /* ---------- Rail : établissements à cocher, avec leur volume ---------- */

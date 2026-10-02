@@ -191,7 +191,7 @@ function onClic(e, t) {
           v-for="t in ticketsTries"
           :key="t.id"
           tabindex="0"
-          :class="{ 'needs-action': t.attend_mon_action, 'ligne-moi': t.affectation === 'MOI' }"
+          :class="{ 'needs-action': t.attend_mon_action, 'ligne-moi': t.affectation === 'MOI', 'ligne-aucun': t.affectation === 'AUCUN' }"
           @click="onClic($event, t)"
           @keydown.enter="emit('ouvrir', t.id)"
         >
