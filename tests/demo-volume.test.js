@@ -43,6 +43,8 @@ test("chaque étape est faite par quelqu'un d'actif et habilité", () => {
       if (op === "transferer") {
         assert.ok(e.GROUPES.includes(groupe), `transfert par ${login} hors du groupe ${groupe}`);
         groupe = choix;
+      } else if (op === "commenter" && login === t.demandeur) {
+        // Le demandeur repond ou relance (commentaire saisi dans EV).
       } else if (["prendre", "suspendre", "reprendre", "commenter", "annuler"].includes(op)) {
         assert.ok(e.GROUPES.includes(groupe), `${op} par ${login}, pas membre du groupe ${groupe}`);
       } else if (op === "terminer") {
@@ -64,4 +66,18 @@ test("volume varié : incidents et demandes, refus, annulations, attentes, trans
     assert.ok(nb(op) >= 5, `peu d'étapes « ${op} » (${nb(op)})`);
   }
   assert.ok(tickets.some((t) => t.etapes.some((e) => e[0] === "terminer" && e[4] === "0")), "au moins un refus / une réouverture");
+});
+
+test("contenu riche : descriptions et échanges sur plusieurs lignes", () => {
+  const multiligne = (s) => /\n|<\/p>\s*<p|<br|<li/.test(s || "");
+  const desc = tickets.filter((t) => multiligne(t.description)).length;
+  assert.ok(desc > tickets.length * 0.7, `descriptions multilignes : ${desc} / ${tickets.length}`);
+  const commentaires = tickets.flatMap((t) => t.etapes.filter((e) => e[3]).map((e) => e[3]));
+  assert.ok(commentaires.filter(multiligne).length > commentaires.length * 0.4, "commentaires multilignes");
+  // Des échanges : un message du demandeur entre deux messages d'intervenant.
+  const echanges = tickets.filter((t) => {
+    const auteurs = t.etapes.filter((e) => e[0] === "commenter").map((e) => e[1] === t.demandeur);
+    return auteurs.some((d, i) => i > 0 && d && !auteurs[i - 1]);
+  });
+  assert.ok(echanges.length > tickets.length * 0.15, `échanges : ${echanges.length}`);
 });

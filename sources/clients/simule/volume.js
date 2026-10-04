@@ -13,6 +13,7 @@
 
 const D = require("./donnees");
 const F = require("./fichiers");
+const C = require("./contenu");
 
 const NB_TICKETS = Number(process.env.DEMO_TICKETS ?? 1300);
 const JOURS = 90;
@@ -187,49 +188,6 @@ const FREQUENCE = {
   115: 3, 116: 4, 201: 5, 203: 4, 204: 5, 205: 2, 206: 2, 207: 2, 208: 2, 209: 1, 210: 1, 212: 2,
 };
 
-const COMMENTAIRES = {
-  resolution: [
-    "Redémarrage du service, fonctionnement rétabli.",
-    "Paramétrage corrigé, vérifié avec l'utilisateur.",
-    "Matériel remplacé.",
-    "Mise à jour appliquée, test concluant.",
-    "Droits corrigés.",
-    "Contournement communiqué, correctif éditeur appliqué.",
-    "Cache et profil réinitialisés, OK.",
-    "Corrigé par l'éditeur.",
-    "Câble remplacé.",
-  ],
-  realisation: [
-    "Réalisé.",
-    "Installé et testé avec l'utilisateur.",
-    "Accès créés, identifiants transmis.",
-    "Livré et validé avec le demandeur.",
-    "Paramétrage effectué en recette puis en production.",
-  ],
-  suspension: [
-    "En attente de retour de l'utilisateur.",
-    "Pièce commandée chez le fournisseur.",
-    "Ticket ouvert chez l'éditeur.",
-    "Intervention planifiée sur site.",
-    "Utilisateur absent, rappel prévu.",
-  ],
-  suivi: [
-    "Utilisateur rappelé, diagnostic en cours.",
-    "Prise en main à distance effectuée.",
-    "Analyse des journaux en cours.",
-    "Reproduit sur un poste de test.",
-  ],
-  refus: [
-    "Non prioritaire cette année.",
-    "Besoin déjà couvert par l'outil existant.",
-    "À revoir avec le cadre du service.",
-    "Budget non disponible.",
-  ],
-  validation: ["", "", "Validé.", "OK pour moi.", "Validé en réunion de service."],
-  rouverture: ["Le problème est revenu.", "Toujours pas résolu.", "Ça a refonctionné une journée seulement."],
-  annulation: ["Doublon d'un autre ticket.", "Résolu par l'utilisateur lui-même.", "Demande retirée par le service."],
-};
-
 // Groupe de transfert depuis le Service Desk, selon le sujet.
 const TRANSFERTS = { 102: 11, 103: 11, 104: 2, 106: 2, 116: 2 };
 
@@ -237,7 +195,10 @@ const TRANSFERTS = { 102: 11, 103: 11, 104: 2, 106: 2, 116: 2 };
 
 function genererVolume(nombre = NB_TICKETS) {
   const H = generateur(20261001);
+  // Textes tires a part : enrichir les textes ne change pas les scenarios.
+  const T = generateur(20261002);
   const login = (id) => D.EMPLOYEES.find((e) => e.EMPLOYEE_ID === id).IDENTIFICATION;
+  const parLogin = (l) => D.EMPLOYEES.find((e) => e.IDENTIFICATION === l);
   const actifs = (e) => !e.DEPARTURE_DATE;
   const membres = (groupeId) =>
     D.GROUPS.find((g) => g.GROUP_ID === groupeId).MEMBERS.map((id) => D.EMPLOYEES.find((e) => e.EMPLOYEE_ID === id)).filter(actifs);
@@ -252,12 +213,20 @@ function genererVolume(nombre = NB_TICKETS) {
     const incident = cat.CATALOG_REQUEST_PATH.startsWith("Incidents/");
     const [titre, description] = H.choix(SUJETS[cat.SD_CATALOG_ID]);
     const dem = H.choix(demandeurs);
-    const t = { catalogue: cat.SD_CATALOG_ID, titre, description, demandeur: dem.IDENTIFICATION, heures, etapes: [] };
+    const t = {
+      catalogue: cat.SD_CATALOG_ID,
+      titre,
+      description: C.description(T, { catalogue: cat.SD_CATALOG_ID, titre, resume: description, demandeur: dem, incident }),
+      demandeur: dem.IDENTIFICATION,
+      heures,
+      etapes: [],
+    };
     // Comme dans la vraie vie : des captures collees dans la description, et des
     // fichiers joints (capture ou journal), en general un seul.
     const ecran = { titre: cat.TITLE_FR, message: titre, details: [description || "Voir ci-dessus."].filter(Boolean), couleur: H.choix(["#1d5b8f", "#2D6A6F", "#6b3fa0", "#555"]) };
     if (H.proba(0.12)) {
-      t.description = F.descriptionAvecCaptures([description || titre, "Capture de l'écran :"], [{ ...ecran, details: [...ecran.details, `Poste ${100 + n % 400}`] }]);
+      const lignes = t.description.startsWith("<") ? [description || titre] : t.description.split("\n").filter(Boolean);
+      t.description = F.descriptionAvecCaptures([...lignes, "Capture de l'écran :"], [{ ...ecran, details: [...ecran.details, `Poste ${100 + n % 400}`] }]);
     }
     if (H.proba(0.18)) {
       t.pieces = [
@@ -290,11 +259,11 @@ Code retour : ${1000 + (n % 9000)}
     if (!incident && cat.VALIDATION === true) {
       const valideur = dem.MANAGER_LOGIN || login(D.GROUPS.find((g) => g.GROUP_ID === D.GROUPE_SUPERVISION).MEMBERS[0]);
       if (H.proba(0.15)) {
-        etape(2, 72, "terminer", valideur, H.choix(COMMENTAIRES.refus), "0");
+        etape(2, 72, "terminer", valideur, C.refus(T), "0");
         tickets.push(t);
         continue;
       }
-      if (!etape(2, 72, "terminer", valideur, H.choix(COMMENTAIRES.validation), "1")) {
+      if (!etape(2, 72, "terminer", valideur, C.validation(T), "1")) {
         tickets.push(t);
         continue;
       }
@@ -317,7 +286,7 @@ Code retour : ${1000 + (n % 9000)}
       continue;
     }
     if (H.proba(0.03)) {
-      etape(0.5, 48, "annuler", login(H.choix(membres(groupe)).EMPLOYEE_ID), H.choix(COMMENTAIRES.annulation));
+      etape(0.5, 48, "annuler", login(H.choix(membres(groupe)).EMPLOYEE_ID), C.annulation(T));
       tickets.push(t);
       continue;
     }
@@ -325,18 +294,29 @@ Code retour : ${1000 + (n % 9000)}
     const tech = login(H.choix(membres(groupe)).EMPLOYEE_ID);
     // Urgent : pris tres vite ; sinon dans la journee.
     etape(0.05, t.urgence === 1 ? 1 : incident ? 8 : 30, "prendre", tech);
-    if (H.proba(0.25)) etape(0.2, 6, "commenter", tech, H.choix(COMMENTAIRES.suivi));
-    if (H.proba(0.25)) {
-      etape(0.5, 24, "suspendre", tech, H.choix(COMMENTAIRES.suspension));
-      etape(8, 96, "reprendre", tech, "Reprise du traitement.");
+    // Echange avec le demandeur : question, reponse, precision (des messages qui se suivent).
+    if (H.proba(0.35)) {
+      const ech = C.echange(T, { tech: parLogin(tech), demandeur: dem, incident });
+      etape(0.2, 4, "commenter", tech, ech.question);
+      if (H.proba(0.85)) etape(0.3, 20, "commenter", dem.IDENTIFICATION, ech.reponse);
+      if (H.proba(0.6)) etape(0.1, 3, "commenter", tech, ech.precision);
     }
-    // Quelques tickets qui trainent (jamais resolus) : ils finissent en retard.
+    if (H.proba(0.25)) etape(0.2, 6, "commenter", tech, C.suivi(T, cat.SD_CATALOG_ID, parLogin(tech), incident));
+    if (H.proba(0.25)) {
+      etape(0.5, 24, "suspendre", tech, C.attente(T));
+      // Pendant l'attente, le demandeur repond ou relance.
+      if (H.proba(0.4)) etape(2, 48, "commenter", dem.IDENTIFICATION, C.relance(T, incident));
+      etape(4, 72, "reprendre", tech, C.reprise(T));
+    }
+    // Quelques tickets qui trainent (jamais resolus) : ils finissent en retard,
+    // et le demandeur finit parfois par relancer.
     if (oubliable && H.proba(0.06)) {
+      if (H.proba(0.5)) etape(12, 72, "commenter", dem.IDENTIFICATION, C.relance(T, incident));
       tickets.push(t);
       continue;
     }
     const resolution = () =>
-      etape(0.3, incident ? 24 : 60, "terminer", tech, H.choix(incident ? COMMENTAIRES.resolution : COMMENTAIRES.realisation));
+      etape(0.3, incident ? 24 : 60, "terminer", tech, C.resolution(T, cat.SD_CATALOG_ID, incident));
     resolution();
     // Confirmation par le demandeur (parfois jamais faite : reste "Résolu").
     if (H.proba(0.06)) {
@@ -344,7 +324,7 @@ Code retour : ${1000 + (n % 9000)}
       continue;
     }
     if (H.proba(0.07)) {
-      etape(2, 72, "terminer", dem.IDENTIFICATION, H.choix(COMMENTAIRES.rouverture), "0");
+      etape(2, 72, "terminer", dem.IDENTIFICATION, C.rouverture(T), "0");
       resolution();
     }
     etape(2, 96, "terminer", dem.IDENTIFICATION, "", "1");

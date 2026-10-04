@@ -87,6 +87,11 @@ le nombre de tickets générés (`DEMO_TICKETS=0` : seulement ceux de `demo.js`)
 Comme dans la vraie vie, une partie des tickets a des captures d'écran
 collées dans la description ou les commentaires, et des pièces jointes
 (captures, journaux, PDF, mail) : voir `sources/clients/simule/fichiers.js`.
+Les textes sont volontairement longs, pour éprouver la lisibilité du détail
+(`contenu.js`) : descriptions sur plusieurs lignes (texte simple ou HTML de
+l'éditeur, avec « déjà essayé » et signature), commentaires détaillés, et
+échanges qui s'enchaînent entre intervenant et demandeur (question, réponse,
+relance).
 
 **Captures et pièces jointes** : descriptions et commentaires EasyVista
 peuvent être du HTML (éditeur EV, images collées). Le détail d'un ticket
