@@ -4,7 +4,7 @@ Portail tickets IT : un **affichage simplifié d'EasyVista** pour les
 équipes support et les cadres valideurs. EasyVista reste maître des tickets,
 des étapes, des droits et de l'historique ; le portail affiche et transmet.
 
-Du 27/09/2026 au 02/10/2026, 32 commits.
+Du 27/09/2026 au 05/10/2026, 36 commits.
 
 ## 1. Le socle (27/09)
 
@@ -92,11 +92,33 @@ Une série de retouches guidées par l'usage :
 - Documentation remise en ordre : README, guide d'installation, captures
   d'écran régénérables (`npm run captures`).
 
-## 9. Dernière retouche (02/10)
+## 9. Tickets non affectés plus visibles (02/10)
 
 - **Tickets non affectés plus visibles**, surtout en thème clair : badge
   plein rose (même couleur que la carte de stats « Non affectés ») et barre
   rose à gauche de la ligne.
+
+## 10. Démo plus réaliste pour tester la lisibilité (04/10)
+
+- Même volume (environ 1 300 tickets), mais un **contenu plus riche** :
+  descriptions sur plusieurs lignes (texte simple ou HTML de l'éditeur EV,
+  « déjà essayé », signature), commentaires détaillés.
+- **Échanges qui se suivent** entre intervenant et demandeur : question,
+  réponse, précision, relances pendant une mise en attente.
+
+## 11. Saisie en hotline (05/10)
+
+- Au téléphone, la solution est souvent trouvée pendant l'appel : un champ
+  **« Solution apportée »** permet de créer, prendre, résoudre et clôturer
+  le ticket **en un seul envoi** (bouton ou Ctrl+Entrée).
+- Pas de raccourci par rapport à EV : le portail **enchaîne les boutons du
+  détail**, avec les mêmes droits. Si EV oriente le ticket vers un autre
+  groupe ou vers une validation, il suit son cours et la solution est gardée
+  en commentaire.
+- Saisie rapide : demandeur au clavier, titre facultatif (libellé du
+  catalogue par défaut), établissement prérempli, bouton d'envoi toujours
+  visible, notes protégées d'une fermeture par erreur, formulaire vidé pour
+  l'appel suivant.
 
 ## Principes tenus tout au long
 
@@ -114,3 +136,5 @@ Une série de retouches guidées par l'usage :
 - Brancher la vraie API EasyVista et l'annuaire AD.
 - Vérifier sur une instance réelle les routes encore supposées
   (questionnaires, format des captures et pièces jointes).
+- Vérifier que le compte de service peut terminer les actions des groupes
+  support (indispensable à la clôture directe en hotline).
