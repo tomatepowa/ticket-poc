@@ -989,7 +989,32 @@ table.tickets tr.needs-action td:first-child { box-shadow: inset 3px 0 0 var(--a
   border-radius: var(--radius-sm);
   cursor: pointer;
 }
-.suggestions button:hover, .suggestions button:focus-visible { background: var(--hover); }
+.suggestions button:hover, .suggestions button:focus-visible, .suggestions button.active { background: var(--hover); }
+
+/* Saisie hotline : solution trouvée pendant l'appel, bouton d'envoi toujours visible */
+.field.solution {
+  padding: 12px;
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius);
+}
+.field.solution.remplie { border-style: solid; border-color: var(--st-resolu); background: var(--st-resolu-bg); }
+.field.solution.remplie > label:first-child { color: var(--st-resolu); }
+.field.solution .case { align-items: flex-start; font-size: 13px; font-weight: 400; color: var(--ink); }
+.field.solution .case input { width: auto; margin: 2px 0 0; box-shadow: none; }
+.creation-envoi {
+  position: sticky;
+  bottom: -32px; /* colle au bas du panneau malgré son padding */
+  margin: 0 -24px -32px;
+  padding: 12px 24px 16px;
+  background: var(--surface);
+  border-top: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.btn-primary.btn-resolu { background: var(--st-resolu); border-color: var(--st-resolu); color: var(--surface); }
+.btn-primary.btn-resolu:hover { filter: brightness(1.1); }
+.creation-envoi .raccourci { text-align: center; font-size: 12px; }
 
 /* ---------- Formulaires EasyVista (questionnaires génériques) ---------- */
 .formulaire-ev {

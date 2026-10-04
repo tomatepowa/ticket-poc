@@ -34,6 +34,9 @@ const panneau = ref(null); // null | "creation" | "detail"
 const ticket = ref(null);
 // Incremente a chaque ouverture du detail : le panneau repart de zero (commentaire vide...).
 const versionDetail = ref(0);
+// Idem pour la saisie : apres un ticket resolu en direct, formulaire vide pour l'appel suivant.
+const versionCreation = ref(0);
+const brouillon = ref(false); // saisie en cours dans le panneau de creation
 
 const titreVue = computed(() => vues.value.find((v) => v.code === filtres.vue)?.label || "Tickets");
 const compteVisible = computed(() => {
@@ -164,13 +167,29 @@ function ouvrirCreation() {
 
 function fermerPanneaux({ majUrl = true } = {}) {
   panneau.value = null;
+  brouillon.value = false;
   ticket.value = null;
   document.title = TITRE_PAGE;
   if (majUrl && ticketDansUrl()) history.pushState(null, "", "/");
 }
 
+// Clic à côté du panneau : ne ferme pas une saisie en cours (notes d'appel perdues).
+function clicOverlay() {
+  if (panneau.value === "creation" && brouillon.value) return;
+  fermerPanneaux();
+}
+
 async function onCree(cree) {
-  toast(`Ticket ${cree.numero} créé.`);
+  const direct = cree.resolution_directe;
+  // Résolu en direct (hotline) : formulaire vide, prêt pour l'appel suivant.
+  if (direct?.resolu) {
+    toast(`Ticket ${cree.numero} ${direct.message}.`);
+    versionCreation.value++;
+    brouillon.value = false;
+    rafraichir().catch((err) => toast(err.message));
+    return;
+  }
+  toast(direct ? `Ticket ${cree.numero} ${direct.message}.` : `Ticket ${cree.numero} créé.`);
   try {
     await rafraichir();
     await ouvrirDetail(cree.id);
@@ -217,7 +236,7 @@ function onPopstate() {
 }
 
 function onKeydown(e) {
-  if (e.key === "Escape" && panneau.value) fermerPanneaux();
+  if (e.key === "Escape" && panneau.value) clicOverlay();
 }
 </script>
 
@@ -268,12 +287,14 @@ function onKeydown(e) {
   </div>
 
   <template v-if="panneau">
-    <div class="overlay" @click="fermerPanneaux()"></div>
+    <div class="overlay" @click="clicOverlay"></div>
     <PanneauCreation
       v-if="panneau === 'creation'"
+      :key="versionCreation"
       :referentiels="referentiels"
       @fermer="fermerPanneaux()"
       @cree="onCree"
+      @brouillon="(v) => (brouillon = v)"
     />
     <PanneauDetail
       v-else-if="panneau === 'detail'"

@@ -476,7 +476,8 @@ function creerSource(client) {
       if (!actifs(locations, cfg.champsFin.etablissement).some((l) => String(l.LOCATION_ID) === String(data.etablissement_id))) {
         throw new ErreurSource(400, "Établissement inconnu");
       }
-      const titre = String(data.titre || "").trim();
+      // Titre facultatif (saisie en hotline) : a defaut, le libelle du catalogue.
+      const titre = String(data.titre || "").trim() || M.lireCatalogue(cat.CATALOG_REQUEST_PATH, cat.TITLE_FR || cat.TITLE_EN).libelle;
       if (!titre) throw new ErreurSource(400, "Le titre est obligatoire");
 
       const demande = {
@@ -528,7 +529,56 @@ function creerSource(client) {
           comment: `Ticket saisi par ${u.nom_complet} pour ${prenom ? `${prenom} ${nom}` : nom}${origine ? ` (${origine})` : ""}.`,
         },
       });
-      return ticketComplet(u, await contexteDirect(rfc));
+
+      // Hotline : solution trouvee pendant l'appel -> resolu (et clos) dans la foulee.
+      const solution = String(data.solution || "").trim();
+      if (!solution) return ticketComplet(u, await contexteDirect(rfc));
+      const direct = await this.resoudreEnDirect(u, rfc, solution, { cloturer: data.cloturer !== false });
+      return { ...(await ticketComplet(u, await contexteDirect(rfc))), resolution_directe: direct };
+    },
+
+    // Resolution « en direct » d'un ticket qu'on vient de saisir : prendre en charge,
+    // resoudre avec la solution, puis cloturer (l'appelant a confirme au telephone).
+    // Les memes boutons que dans le detail, enchaines : memes droits, meme workflow
+    // EV. Si une etape n'est pas permise (validation prealable, groupe dont je ne
+    // suis pas membre, formulaire de fin a remplir...), on s'arrete la et la
+    // solution est gardee en commentaire : rien n'est perdu, le ticket suit son cours.
+    async resoudreEnDirect(u, rfc, solution, { cloturer = true } = {}) {
+      let resolu = false;
+      let clos = false;
+      let blocage = null;
+      try {
+        for (let i = 0; i < 4 && !clos; i++) {
+          const { ctx } = await contexteDirect(rfc);
+          // Seulement ce qu'on attend de MOI : jamais prendre le ticket d'un collegue.
+          const possibles = new Set(M.actionsPossibles(u, ctx).filter((a) => !a.secondaire).map((a) => a.code));
+          if (!resolu && possibles.has("TERMINER")) {
+            await this.executerAction(u, rfc, { action: "TERMINER", commentaire: solution });
+            resolu = true;
+          } else if (!resolu && possibles.has("PRENDRE")) {
+            await this.executerAction(u, rfc, { action: "PRENDRE" });
+          } else if (resolu && cloturer && possibles.has("CLOTURER")) {
+            await this.executerAction(u, rfc, { action: "CLOTURER" });
+            clos = true;
+          } else {
+            const autreGroupe = ctx.groupe && !u.groupes.some((g) => g.id === ctx.groupe.id);
+            if (!resolu) blocage = autreGroupe ? `EasyVista l'a orienté vers ${ctx.groupe.nom}` : `étape « ${ctx.etape.label} »`;
+            break;
+          }
+        }
+      } catch (err) {
+        blocage = err.message;
+      }
+      if (!resolu) {
+        const { ctx } = await contexteDirect(rfc);
+        await tracer(u, rfc, ctx.groupe?.id, `Solution apportée pendant l'appel :\n${solution}`);
+      }
+      const message = clos
+        ? "résolu et clôturé"
+        : resolu
+          ? "résolu, en attente de confirmation"
+          : `créé mais pas résolu (${blocage || "étape inattendue"}) : solution notée en commentaire`;
+      return { resolu, clos, message };
     },
 
     async executerAction(u, rfc, { action, commentaire, groupe_id, membre_id, reponses } = {}) {

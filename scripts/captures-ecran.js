@@ -200,6 +200,18 @@ async function scenes({ cdp, js }) {
   await connecter("Marc Dubois");
   await js(`[...document.querySelectorAll("button")].find((b) => b.textContent.includes("Nouveau ticket")).click()`);
   await attendre(".panel");
+  // Saisie en hotline : appel réglé au téléphone, solution notée -> « Créer et clôturer ».
+  const saisir = (sel, valeur) =>
+    js(`(() => { const c = document.querySelector(${JSON.stringify(sel)}); c.value = ${JSON.stringify(valeur)}; c.dispatchEvent(new Event(c.tagName === "SELECT" ? "change" : "input")); })()`);
+  await saisir("#c-demandeur", "roux");
+  await attendre(".suggestions button");
+  await js(`document.querySelector(".suggestions button").click()`);
+  await pause(200);
+  await saisir("#c-catalogue", "107");
+  await saisir("#c-description", "Compte bloqué après trois essais, à la prise de poste.\nMessage « compte verrouillé » sur tous les postes.");
+  await saisir("#c-solution", "Compte déverrouillé dans l'AD.\nMot de passe changé avec l'appelant, connexion vérifiée.");
+  await js(`document.querySelector(".panel-body").scrollTop = 1e6`);
+  await pause(300);
   await capture("07-saisie.png");
 
   // 8. Thème sombre

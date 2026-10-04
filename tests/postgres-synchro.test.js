@@ -48,11 +48,21 @@ const EMP = {
   julie: F.employe(3, "Lefèvre, Julie"),
   isabelle: F.employe(4, "Garnier, Isabelle"),
 };
+// Catalogue (saisie de tickets) : EV oriente chaque entree vers un groupe.
+const CAT = {
+  poste: { SD_CATALOG_ID: 71, CODE: "71", CATALOG_REQUEST_PATH: "Incidents/Poste de travail/PC lent", TITLE_FR: "PC lent", groupe: F.GROUPE_SD },
+  serveur: { SD_CATALOG_ID: 72, CODE: "72", CATALOG_REQUEST_PATH: "Incidents/Infra/Serveur", TITLE_FR: "Serveur", groupe: F.GROUPE_INFRA },
+};
+const ETAB = { LOCATION_ID: 7, LOCATION_FR: "Clinique test" };
 const N = { libre: F.incident(1), karim: F.incident(2), infra: F.incident(3), resolu: F.incident(4), closAncien: F.incident(5) };
 
 // Faux EV avec ses equipes et 5 tickets, synchronise dans la base.
 async function monde() {
-  const ev = creerFauxEV({ groupes: [F.GROUPE_SD, F.GROUPE_INFRA, F.GROUPE_SUPERVISION, F.GROUPE_VALIDEURS] });
+  const ev = creerFauxEV({
+    groupes: [F.GROUPE_SD, F.GROUPE_INFRA, F.GROUPE_SUPERVISION, F.GROUPE_VALIDEURS],
+    catalogue: Object.values(CAT),
+    etablissements: [ETAB],
+  });
   ev.ajouterEmploye(EMP.marc, [F.GROUPE_SD]);
   ev.ajouterEmploye(EMP.karim, [F.GROUPE_SD]);
   ev.ajouterEmploye(EMP.julie, [F.GROUPE_INFRA]);
@@ -355,4 +365,63 @@ describe("détail d'un ticket et actions", () => {
     assert.deepEqual(numeros(await source.listerTickets(u.julie, { vue: "groupes", statut: "ACTIFS" })), [N.libre, N.infra].sort());
   });
 
+});
+
+describe("saisie en hotline : résolu pendant l'appel", () => {
+  const saisie = (extra) => ({
+    demandeur_id: F.DEMANDEUR.EMPLOYEE_ID,
+    origine: "Appel téléphonique",
+    catalogue_id: CAT.poste.SD_CATALOG_ID,
+    etablissement_id: ETAB.LOCATION_ID,
+    impact: 1,
+    urgence: 1,
+    ...extra,
+  });
+  async function mondeHotline() {
+    const m = await monde();
+    m.ev.ajouterEmploye(F.DEMANDEUR, []);
+    return m;
+  }
+
+  testPg("sans solution : créé comme avant, à prendre en charge ; titre vide = libellé du catalogue", async () => {
+    const { ev, source, u } = await mondeHotline();
+    const t = await source.creerTicket(u.marc, saisie({ titre: "  " }));
+    assert.equal(t.resolution_directe, undefined);
+    assert.equal(t.titre, "PC lent");
+    const [etape] = ev.actionsDe(t.numero);
+    assert.equal(etape.DONE_BY_ID, null);
+    assert.equal(etape.END_DATE_UT, null);
+  });
+
+  testPg("avec solution : pris, résolu avec la solution, puis clôturé, en un seul envoi", async () => {
+    const { ev, source, u } = await mondeHotline();
+    const solution = "Profil réinitialisé.\nTesté avec l'appelant.";
+    const t = await source.creerTicket(u.marc, saisie({ titre: "Session lente", solution }));
+    assert.deepEqual(t.resolution_directe, { resolu: true, clos: true, message: "résolu et clôturé" });
+    const actions = ev.actionsDe(t.numero);
+    const traitement = actions.find((a) => a.ACTION_TYPE.NAME_FR === F.TYPE.traitement);
+    assert.equal(traitement.DONE_BY_ID, EMP.marc.EMPLOYEE_ID);
+    assert.equal(traitement.COMMENT, solution);
+    assert.equal(actions.find((a) => a.ACTION_TYPE.NAME_FR === F.TYPE.confirmation).CHOICE, "1");
+    assert.equal((await ev.getRequest(t.numero)).STATUS.STATUS_FR, F.STATUT.cloture);
+    assert.equal(t.statut, "CLOTURE");
+  });
+
+  testPg("avec solution, sans clôturer : résolu, en attente de confirmation", async () => {
+    const { ev, source, u } = await mondeHotline();
+    const t = await source.creerTicket(u.marc, saisie({ solution: "Câble rebranché.", cloturer: false }));
+    assert.equal(t.resolution_directe.resolu, true);
+    assert.equal(t.resolution_directe.clos, false);
+    assert.equal((await ev.getRequest(t.numero)).STATUS.STATUS_FR, F.STATUT.resolu);
+  });
+
+  testPg("orienté vers un groupe dont je ne suis pas : pas résolu, solution gardée en commentaire", async () => {
+    const { ev, source, u } = await mondeHotline();
+    const t = await source.creerTicket(u.marc, saisie({ catalogue_id: CAT.serveur.SD_CATALOG_ID, solution: "Redémarré le service." }));
+    assert.equal(t.resolution_directe.resolu, false);
+    assert.match(t.resolution_directe.message, /pas résolu/);
+    const actions = ev.actionsDe(t.numero);
+    assert.equal(actions[0].DONE_BY_ID, null, "le ticket d'un autre groupe n'est pas pris");
+    assert.ok(actions.some((a) => a.ACTION_TYPE.NAME_FR === F.TYPE.commentaire && /Redémarré le service\./.test(a.COMMENT)));
+  });
 });

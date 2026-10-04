@@ -8,7 +8,10 @@
 const cfg = require("../sources/portail/correspondance");
 const F = require("./fabrique");
 
-function creerFauxEV({ groupes = [] } = {}) {
+// catalogue : [{ SD_CATALOG_ID, CODE, CATALOG_REQUEST_PATH, TITLE_FR, groupe }] -> createRequest
+// cree un ticket « Nouveau » avec une etape de traitement pour ce groupe ; terminer
+// le traitement passe a « Resolu » + confirmation, confirmer passe a « Cloture ».
+function creerFauxEV({ groupes = [], catalogue = [], etablissements = [] } = {}) {
   const tickets = new Map(); // RFC_NUMBER -> ticket EV
   let actions = []; // actions EV, avec REQUEST.RFC_NUMBER
   const employes = new Map(); // EMPLOYEE_ID -> { employe, groupes }
@@ -105,10 +108,10 @@ function creerFauxEV({ groupes = [] } = {}) {
       return { records: copie(groupes) };
     },
     async getCatalog() {
-      return { records: [] };
+      return { records: catalogue.map(({ groupe, validation, ...c }) => copie(c)) };
     },
     async getLocations() {
-      return { records: [] };
+      return { records: copie(etablissements) };
     },
     async getEmployee(id) {
       verifier();
@@ -143,7 +146,40 @@ function creerFauxEV({ groupes = [] } = {}) {
       verifier();
       const a = trouverAction(end_action.action_id);
       Object.assign(a, { END_DATE_UT: maintenant(), CHOICE: end_action.choice, COMMENT: end_action.comment });
+      // Mini workflow : traitement -> confirmation par le demandeur -> cloture.
+      const req = tickets.get(rfc);
+      const nature = cfg.typesAction[a.ACTION_TYPE.NAME_FR]?.nature;
+      const etape = (type, faitPar) =>
+        actions.push({ ACTION_ID: prochainId++, ACTION_TYPE: { NAME_FR: type }, GROUP: a.GROUP, DONE_BY_ID: faitPar?.EMPLOYEE_ID ?? null, DONE_BY: faitPar || null, START_DATE_UT: maintenant(), END_DATE_UT: null, REQUEST: { RFC_NUMBER: rfc } });
+      if (nature === "TRAITEMENT") {
+        req.STATUS = { STATUS_FR: F.STATUT.resolu };
+        etape(F.TYPE.confirmation, req.REQUESTOR);
+      } else if (nature === "CONFIRMATION") {
+        req.STATUS = { STATUS_FR: String(end_action.choice) === "1" ? F.STATUT.cloture : F.STATUT.enCours };
+        if (String(end_action.choice) !== "1") etape(F.TYPE.traitement, null);
+      }
       toucher(rfc);
+    },
+    async createRequest({ requests: [r] }) {
+      verifier();
+      const cat = catalogue.find((c) => c.CODE === r.catalog_code);
+      if (!cat) throw Object.assign(new Error("Catalogue inconnu"), { status: 400 });
+      const demandeur = [...employes.values()].find((e) => e.employe.E_MAIL === r.requestor_mail)?.employe;
+      const rfc = (cat.CATALOG_REQUEST_PATH.startsWith("Demandes/") ? F.demande : F.incident)(prochainId++);
+      tickets.set(rfc, {
+        RFC_NUMBER: rfc,
+        TITLE: r.title,
+        DESCRIPTION: r.description,
+        STATUS: { STATUS_FR: F.STATUT.nouveau },
+        REQUESTOR: demandeur,
+        SD_CATALOG_ID: cat.SD_CATALOG_ID,
+        LOCATION: { LOCATION_ID: r.location_id },
+        SUBMIT_DATE_UT: maintenant(),
+      });
+      const type = cat.validation ? F.TYPE.validation : F.TYPE.traitement;
+      actions.push({ ACTION_ID: prochainId++, ACTION_TYPE: { NAME_FR: type }, GROUP: cat.groupe, DONE_BY_ID: null, DONE_BY: null, START_DATE_UT: maintenant(), END_DATE_UT: null, REQUEST: { RFC_NUMBER: rfc } });
+      toucher(rfc);
+      return { HREF: `https://faux-ev/requests/${rfc}` };
     },
     async createAction(rfc, { action }) {
       verifier();

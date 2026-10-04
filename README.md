@@ -30,7 +30,7 @@ Données de démonstration (faux EasyVista, personnes fictives).
 | ![Détail d'un ticket et ses actions](docs/captures/04-detail.png) | ![Captures collées et pièce jointe](docs/captures/05-captures-pieces-jointes.png) |
 | **Détail** : actions attendues en boutons, les autres repliées ; historique ; informations | **Captures** collées dans la description, pièces jointes, clic pour agrandir |
 | ![Saisie d'un ticket](docs/captures/07-saisie.png) | ![Thème sombre](docs/captures/08-theme-sombre.png) |
-| **Saisie** pour le compte d'un demandeur | **Thème sombre** |
+| **Saisie** pour le compte d'un demandeur ; en hotline, solution notée pendant l'appel → résolu et clôturé en un envoi | **Thème sombre** |
 
 Autres captures dans [docs/captures](docs/captures) (connexion, cadre valideur,
 capture agrandie). Pour les régénérer après une évolution de l'écran, portail
@@ -293,6 +293,11 @@ D'après la [documentation de l'API REST](https://docs.easyvista.com/docs/webser
 - **Traçabilité** : chaque action transmise à EV porte l'auteur réel
   (`done_by_id`, `doneby_mail`). Une saisie porte le demandeur
   (`requestor_mail`) et un commentaire « Ticket saisi par X pour Y (origine) ».
+- **Hotline** : si la solution est notée à la saisie, le ticket est créé, pris,
+  résolu et clôturé dans la foulée (Ctrl+Entrée), en enchaînant les boutons
+  du détail : mêmes droits, même workflow EV. Si EV l'oriente vers un groupe
+  dont on n'est pas membre (ou vers une validation), il suit son cours et la
+  solution est gardée en commentaire.
 - **Étape du ticket** = ses actions en cours
   (`/actions?search=request.rfc_number:"…",end_date_ut:"is_null"`), traduites
   par `correspondance.js`. EV n'expose pas le schéma des workflows : les
@@ -307,6 +312,7 @@ D'après la [documentation de l'API REST](https://docs.easyvista.com/docs/webser
 | Transférer | `PUT /actions/{id}` `{ group_id }` + commentaire |
 | Ajouter un commentaire | `POST /requests/{rfc}/actions` (type « Commentaire ») |
 | Saisir un ticket | `POST /requests` (catalogue, demandeur, urgence, impact) + commentaire de saisie |
+| Saisir un ticket résolu en direct (hotline) | saisie, puis les boutons Prendre en charge, Résoudre (solution en commentaire) et Clôturer enchaînés, avec les mêmes droits |
 | Chercher un demandeur | `GET /employees?search=last_name~"*…*"` |
 | Formulaire d'une entrée de catalogue | `GET /questionnaires/{id}` + `GET /questions-questionnaire/{id}` |
 | Saisie avec formulaire | `POST /requests/without-workflow`, `POST /questions-result/{request_id}/{question_id}`, `PUT /requests/{rfc}/workflowstart` |
