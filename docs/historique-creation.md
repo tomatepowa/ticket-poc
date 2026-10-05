@@ -5,7 +5,7 @@ cliniques privées) : un **affichage simplifié d'EasyVista** pour les
 équipes support et les cadres valideurs. EasyVista reste maître des tickets,
 des étapes, des droits et de l'historique ; le portail affiche et transmet.
 
-Du 27/09/2026 au 05/10/2026, 37 commits.
+Du 27/09/2026 au 05/10/2026, 38 commits.
 
 ## 1. Le socle (27/09)
 
@@ -127,6 +127,13 @@ Une série de retouches guidées par l'usage :
   privées) : nom affiché dans le bandeau réglable (`ORGANISATION`).
 - Démo sur un groupe fictif, « Groupe Exemple », aux établissements et villes
   inventés.
+
+## 13. Explorer une vraie instance EV (05/10)
+
+- `npm run explorer-ev` : lecture seule de la structure d'une vraie instance
+  (statuts, groupes, catalogue, types d'action, champs) et rapport des écarts
+  avec `correspondance.js`, avec un simple jeton personnel.
+- Garde-fou `EV_LECTURE_SEULE=1` : aucune écriture ne part vers EV.
 
 ## Principes tenus tout au long
 

@@ -10,7 +10,8 @@
     "build": "vite build",
     "test": "node --test --test-concurrency=1",
     "reset-demo": "node scripts/reset-demo.js",
-    "captures": "node scripts/captures-ecran.js"
+    "captures": "node scripts/captures-ecran.js",
+    "explorer-ev": "node scripts/explorer-ev.js"
   },
   "dependencies": {
     "express": "^4.19.2",

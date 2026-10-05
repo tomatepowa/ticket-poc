@@ -7,7 +7,10 @@
 // Configuration (variables d'environnement, jamais en dur) :
 //   EV_URL      ex. https://mon-organisation.easyvista.com   (sans /api/v1)
 //   EV_ACCOUNT  numero de compte EV, ex. 50004
-//   EV_TOKEN    jeton d'acces du compte de service (Administration > Acces > Jetons)
+//   EV_TOKEN    jeton d'acces du compte de service
+//               (Administration > Access Management > Access Tokens)
+//   EV_LECTURE_SEULE=1  aucune ecriture envoyee a EV (exploration, essai avec un
+//               jeton personnel) : toute requete autre que GET est refusee ici.
 //
 // NON TESTE contre une vraie instance : a valider des qu'un acces est disponible.
 // Points "A VERIFIER" signales en commentaire.
@@ -24,9 +27,13 @@ function lireConfig() {
 }
 
 const { base, token } = lireConfig();
+const LECTURE_SEULE = process.env.EV_LECTURE_SEULE === "1";
 const TIMEOUT_MS = 30000;
 
 async function appel(methode, chemin, { query, body } = {}) {
+  if (LECTURE_SEULE && methode !== "GET") {
+    throw new ErreurSource(403, "Mode lecture seule (EV_LECTURE_SEULE=1) : rien n'a été envoyé à EasyVista");
+  }
   const url = new URL(base + chemin);
   Object.entries(query || {}).forEach(([k, v]) => v != null && v !== "" && url.searchParams.set(k, v));
 

@@ -185,6 +185,7 @@ async function demarrer() {
   serveur.listen(PORT, () => {
     console.log(`Portail tickets en ecoute sur http://localhost:${PORT}`);
     console.log(`Source : ${source.nom} | Authentification : ${auth.mode} | Front : ${front}`);
+    if (source.nom === "easyvista" && process.env.EV_LECTURE_SEULE === "1") console.log("EasyVista en LECTURE SEULE (EV_LECTURE_SEULE=1) : aucune action ne sera transmise.");
     // Copie locale des donnees EV : premiere synchro immediate, puis a intervalle regulier.
     source.demarrerSynchro();
     if (auth.mode === "dev") {

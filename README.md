@@ -342,6 +342,28 @@ Signalé par `A VERIFIER` dans `sources/clients/http.js` et `sources/portail/syn
   (fichier brut ou base64, type et nom du fichier) ;
 - groupes : l'instance a-t-elle des groupes et sous-groupes (champ parent) ?
 
+### Explorer une vraie instance (lecture seule)
+
+Avec `EV_URL`, `EV_ACCOUNT` et `EV_TOKEN` dans `.env` (un jeton personnel
+suffit pour lire) :
+
+```bash
+npm run explorer-ev
+```
+
+Le script ne fait que des lectures (`EV_LECTURE_SEULE` forcé) : statuts,
+groupes, localisations, catalogue, quelques tickets (5 par défaut,
+`EXPLORER_TICKETS`), leurs actions, pièces jointes et réponses. Résultats dans
+`data/exploration-ev/` (ignoré par git) :
+- `rapport.md` : structure seule (libellés, noms de champs, compteurs) et
+  **écarts avec `correspondance.js`** (statuts, types d'action, préfixes de
+  numéro, groupes de profils), sans contenu de ticket ni nom de personne ;
+- `brut/` : réponses JSON complètes, **données réelles**, à garder sur le poste.
+
+Pour voir le portail sur les vrais tickets sans rien modifier dans EV :
+`SOURCE=easyvista` et `EV_LECTURE_SEULE=1` (toute action est alors refusée
+avant d'être envoyée).
+
 ## Variables d'environnement
 
 | Variable | Valeurs | Défaut |
@@ -349,6 +371,7 @@ Signalé par `A VERIFIER` dans `sources/clients/http.js` et `sources/portail/syn
 | `DATABASE_URL` | `postgres://utilisateur:motdepasse@serveur:5432/base` | **obligatoire** |
 | `SOURCE` | `simulation`, `easyvista` | `simulation` |
 | `EV_URL`, `EV_ACCOUNT`, `EV_TOKEN` | accès à l'API EV | requis si `SOURCE=easyvista` |
+| `EV_LECTURE_SEULE` | `1` : aucune écriture envoyée à EV (exploration, jeton personnel) | écritures permises |
 | `SYNCHRO_SECONDES` | intervalle de la synchro par différence | `60` |
 | `RETENTION_JOURS` | durée de conservation des tickets clos dans la copie locale | `365` |
 | `DEV_COMPTES` | e-mails proposés à la connexion de dev sur le vrai EV | 100 premiers employés ayant un profil |
