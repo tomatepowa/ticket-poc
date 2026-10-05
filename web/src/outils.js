@@ -11,6 +11,17 @@ export function initiales(u) {
   return `${u.prenom[0]}${u.nom[0]}`.toUpperCase();
 }
 
+// Bandeau : nom de l'organisation (réglage ORGANISATION) et pastille d'initiales.
+export function marque(config) {
+  const nom = config?.organisation || "";
+  const mots = nom.split(/[\s-]+/).filter((m) => /^\p{Lu}/u.test(m));
+  return {
+    nom: nom || "Portail tickets IT",
+    sous: nom ? "Portail tickets IT" : "EasyVista",
+    logo: nom ? (mots.length ? mots.slice(0, 2).map((m) => m[0]).join("") : nom.slice(0, 2).toUpperCase()) : "PT",
+  };
+}
+
 // Format compact pour la liste : "30/09 14:00"
 export function formatCourt(iso) {
   return new Date(iso).toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });

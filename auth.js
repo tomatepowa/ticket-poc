@@ -55,8 +55,11 @@ function creerAuth(source) {
     return s ? { jeton, ...s } : null;
   }
 
+  // Nom affiché dans le bandeau ; sans réglage, nom fictif pour la démo seulement.
+  const ORGANISATION = process.env.ORGANISATION || (source.nom === "simulation" ? "Groupe Exemple" : "");
+
   function routes(app, envelopper) {
-    app.get("/api/auth/config", (req, res) => res.json({ mode, source: source.nom }));
+    app.get("/api/auth/config", (req, res) => res.json({ mode, source: source.nom, organisation: ORGANISATION }));
 
     app.get(
       "/api/auth/comptes-dev",

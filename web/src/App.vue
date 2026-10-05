@@ -2,7 +2,7 @@
 // Racine du portail : session, filtres, liste et panneaux, liens directs /t/<n°>.
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from "vue";
 import { api, NonConnecte } from "./api.js";
-import { messageToast, ticketDansUrl, toast } from "./outils.js";
+import { marque, messageToast, ticketDansUrl, toast } from "./outils.js";
 import EcranConnexion from "./components/EcranConnexion.vue";
 import RailFiltres from "./components/RailFiltres.vue";
 import StatsTickets from "./components/StatsTickets.vue";
@@ -52,6 +52,7 @@ onMounted(async () => {
   document.addEventListener("keydown", onKeydown);
   try {
     config.value = await api("/auth/config");
+    if (config.value.organisation) document.title = `${marque(config.value).nom} — Portail tickets IT`;
     try {
       const { utilisateur, vues, preferences } = await api("/moi");
       await entrer(utilisateur, vues, preferences);

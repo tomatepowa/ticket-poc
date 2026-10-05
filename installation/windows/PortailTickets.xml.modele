@@ -31,6 +31,8 @@
 
   <!-- ===== Parametres du portail ===== -->
   <env name="NODE_ENV" value="production"/>
+  <!-- Nom de l'organisation affiche dans le bandeau du portail -->
+  <env name="ORGANISATION" value="A_COMPLETER"/>
   <env name="PORT" value="3000"/>
 
   <!-- Base PostgreSQL : role "portail" cree par creer-base.sql -->

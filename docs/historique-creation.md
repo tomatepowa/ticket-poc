@@ -1,10 +1,11 @@
 # Création du portail tickets-poc : les étapes
 
-Portail tickets IT : un **affichage simplifié d'EasyVista** pour les
+Portail tickets IT pour toute organisation sous EasyVista (groupes de
+cliniques privées) : un **affichage simplifié d'EasyVista** pour les
 équipes support et les cadres valideurs. EasyVista reste maître des tickets,
 des étapes, des droits et de l'historique ; le portail affiche et transmet.
 
-Du 27/09/2026 au 05/10/2026, 36 commits.
+Du 27/09/2026 au 05/10/2026, 37 commits.
 
 ## 1. Le socle (27/09)
 
@@ -119,6 +120,13 @@ Une série de retouches guidées par l'usage :
   catalogue par défaut), établissement prérempli, bouton d'envoi toujours
   visible, notes protégées d'une fermeture par erreur, formulaire vidé pour
   l'appel suivant.
+
+## 12. Portail générique (05/10)
+
+- Le portail vise **toute organisation sous EasyVista** (groupes de cliniques
+  privées) : nom affiché dans le bandeau réglable (`ORGANISATION`).
+- Démo sur un groupe fictif, « Groupe Exemple », aux établissements et villes
+  inventés.
 
 ## Principes tenus tout au long
 

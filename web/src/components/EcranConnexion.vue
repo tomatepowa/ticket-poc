@@ -2,7 +2,7 @@
 // Ecran de connexion. Mode developpement : choix d'un compte EV fictif.
 import { computed, onMounted, ref } from "vue";
 import { api } from "../api.js";
-import { PROFIL_LABEL_PLURIEL, initiales, ticketDansUrl, toast } from "../outils.js";
+import { PROFIL_LABEL_PLURIEL, initiales, marque, ticketDansUrl, toast } from "../outils.js";
 
 const props = defineProps({ config: { type: Object, required: true } });
 const emit = defineEmits(["connecte"]);
@@ -37,10 +37,10 @@ async function choisir(compte) {
   <section class="login">
     <div class="login-card">
       <div class="rail-brand login-brand">
-        <span class="rail-logo" aria-hidden="true">OS</span>
+        <span class="rail-logo" aria-hidden="true">{{ marque(config).logo }}</span>
         <div>
-          <div class="rail-brand-name">Groupe Exemple</div>
-          <div class="login-sub">Portail tickets IT</div>
+          <div class="rail-brand-name">{{ marque(config).nom }}</div>
+          <div class="login-sub">{{ marque(config).sous }}</div>
         </div>
       </div>
       <h1>Connexion</h1>

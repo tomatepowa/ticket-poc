@@ -1,7 +1,7 @@
 <script setup>
 // Rail de gauche : vues, filtres, utilisateur connecte, theme.
 import { computed, ref, watch } from "vue";
-import { PROFIL_LABEL, debounce, initiales } from "../outils.js";
+import { PROFIL_LABEL, debounce, initiales, marque } from "../outils.js";
 
 const props = defineProps({
   moi: { type: Object, required: true },
@@ -134,10 +134,10 @@ function changerTheme() {
 <template>
   <aside class="rail">
     <div class="rail-brand">
-      <span class="rail-logo" aria-hidden="true">OS</span>
+      <span class="rail-logo" aria-hidden="true">{{ marque(config).logo }}</span>
       <div>
-        <div class="rail-brand-name">Groupe Exemple</div>
-        <div class="rail-brand-sub">Portail tickets IT</div>
+        <div class="rail-brand-name">{{ marque(config).nom }}</div>
+        <div class="rail-brand-sub">{{ marque(config).sous }}</div>
       </div>
     </div>
 

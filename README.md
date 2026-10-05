@@ -1,6 +1,7 @@
 # POC — Portail tickets IT
 
-L'outil de travail des **équipes support** (Service Desk, infra, téléphonie,
+Pour toute organisation sous EasyVista (pensé pour des groupes de cliniques
+privées) : l'outil de travail des **équipes support** (Service Desk, infra, téléphonie,
 applications métier, DPI, ITO, BI, SIRH, sécurité SI, biomédical, logistique
 IT) et des **cadres valideurs**, en affichage simplifié d'EasyVista. Pas de
 front office pour les utilisateurs finaux : le support saisit les tickets pour
@@ -352,6 +353,7 @@ Signalé par `A VERIFIER` dans `sources/clients/http.js` et `sources/portail/syn
 | `RETENTION_JOURS` | durée de conservation des tickets clos dans la copie locale | `365` |
 | `DEV_COMPTES` | e-mails proposés à la connexion de dev sur le vrai EV | 100 premiers employés ayant un profil |
 | `AUTH_MODE` | `dev`, `sso` | `dev` en local, **obligatoire** en production |
+| `ORGANISATION` | nom affiché dans le bandeau du portail | « Groupe Exemple » en démo, aucun sinon |
 | `PORT` | | `3000` |
 | `TEST_DATABASE_URL` | base **dédiée** aux tests PostgreSQL (`npm test`), nom contenant « test » | tests PostgreSQL ignorés (échec en CI) |
 | `DEMO_TICKETS` | nombre de tickets générés par le faux EV (démo) | `1300` |
